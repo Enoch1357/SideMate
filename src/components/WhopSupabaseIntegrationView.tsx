@@ -436,7 +436,36 @@ export const WhopSupabaseIntegrationView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-300 mb-1">
-                  Whop Webhook Secret (Optional)
+                  Whop Webhook Endpoint URL (Enter this in Whop Dashboard)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={typeof window !== 'undefined' ? `${window.location.origin}/api/whop/webhook` : 'https://ais-pre-xosvijswnl2bxy3r4ybq4e-409871152040.europe-west3.run.app/api/whop/webhook'}
+                    className="w-full bg-slate-950 border border-indigo-900/60 rounded-xl px-4 py-2.5 text-xs text-indigo-300 font-mono select-all focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = typeof window !== 'undefined' ? `${window.location.origin}/api/whop/webhook` : 'https://ais-pre-xosvijswnl2bxy3r4ybq4e-409871152040.europe-west3.run.app/api/whop/webhook';
+                      navigator.clipboard.writeText(url);
+                      alert('Webhook URL copied to clipboard: ' + url);
+                    }}
+                    className="px-3.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold shrink-0 transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy
+                  </button>
+                </div>
+                <span className="text-[11px] text-slate-400 mt-1.5 block">
+                  In Whop Dashboard &gt; <strong>Developer</strong> &gt; <strong>Webhooks</strong> &gt; <strong>Add Webhook</strong>, paste this URL. Listen for <code className="text-amber-400">payment.succeeded</code> and <code className="text-amber-400">membership.went_valid</code>.
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-300 mb-1">
+                  Whop Webhook Secret (whsec_...)
                 </label>
                 <input
                   type="password"
@@ -446,7 +475,7 @@ export const WhopSupabaseIntegrationView: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 font-mono"
                 />
                 <span className="text-[11px] text-slate-500 mt-1 block">
-                  Used to verify cryptographic signatures of incoming payment webhooks.
+                  Provided by Whop after creating the webhook. Used to verify cryptographic signatures of incoming payment webhooks.
                 </span>
               </div>
 
@@ -518,6 +547,16 @@ export const WhopSupabaseIntegrationView: React.FC = () => {
                 <div>
                   <strong className="text-white block">Automated 50/50 Revenue Routing</strong>
                   Whop automatically provisions products into your company and attaches creator affiliate codes for effortless splits.
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3 bg-slate-950 p-3 rounded-xl border border-slate-800">
+                <div className="w-6 h-6 rounded-full bg-indigo-950 text-indigo-400 flex items-center justify-center font-bold shrink-0">
+                  5
+                </div>
+                <div>
+                  <strong className="text-white block">Create Webhook</strong>
+                  Go to <strong>Developer &gt; Webhooks &gt; Add Webhook</strong>. Paste your project's URL ending in <code>/api/whop/webhook</code>. Select <code>payment.succeeded</code>, copy the <strong>Webhook Secret</strong> (<code>whsec_...</code>), and paste it into the field on the left.
                 </div>
               </div>
             </div>

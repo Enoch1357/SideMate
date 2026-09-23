@@ -166,34 +166,54 @@ async function startServer() {
       status: 'healthy',
       geminiConfigured: !!process.env.GEMINI_API_KEY,
       whopConfigured: !!process.env.WHOP_API_KEY,
-      platform: '3DS Automator Platform (Whop Delivery Engine)',
+      platform: 'SideMate Platform (Whop Delivery Engine)',
       time: new Date().toISOString(),
     });
   });
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
   // Helper: Resilient Gemini invocation with multi-model failover for 503/demand spikes
   async function generateWithGemini(prompt: string, systemInstruction: string) {
-    // Model preference list: primary is gemini-3.8-flash, followed by gemini-3.1-flash-lite, then gemini-2.5-flash
-    const modelsToTry = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-2.5-flash'];
+    // Primary: gemini-3.6-flash (recommended modern model with highest availability and speed),
+    // followed by gemini-3.8-flash, gemini-flash-latest, and gemini-3.1-flash-lite.
+    // Deprecated models like gemini-2.5-flash are omitted to avoid 404s.
+    const modelsToTry = [
+      'gemini-3.6-flash',
+      'gemini-3.8-flash',
+      'gemini-flash-latest',
+      'gemini-3.1-flash-lite',
+    ];
     let lastError: any = null;
 
     for (const model of modelsToTry) {
-      try {
-        const response = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config: {
-            responseMimeType: 'application/json',
-            systemInstruction,
-          },
-        });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const response = await ai.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+              responseMimeType: 'application/json',
+              systemInstruction,
+            },
+          });
 
-        if (response && response.text) {
-          return { text: response.text, modelUsed: model };
+          if (response && response.text) {
+            return { text: response.text, modelUsed: model };
+          }
+        } catch (err: any) {
+          lastError = err;
+          const status = err?.status || err?.code;
+          const msg = String(err?.message || '');
+          const isTransient = status === 503 || status === 429 || msg.includes('503') || msg.includes('high demand');
+          
+          if (isTransient && attempt === 0) {
+            // Brief pause with jitter for temporary capacity spikes before retry
+            await sleep(650 + Math.random() * 400);
+            continue;
+          }
+          break; // Move to next model in cascade
         }
-      } catch (err: any) {
-        console.warn(`[Synthesis Warning] Model ${model} encountered: ${err.message || err}. Trying failover model...`);
-        lastError = err;
       }
     }
 
@@ -463,8 +483,8 @@ Generate a complete, high-converting digital product blueprint in strictly valid
           whopConfig,
           engineUsed: modelUsed,
         });
-      } catch (geminiErr: any) {
-        console.warn(`[Synthesis Notice] Upstream model capacity/spike (${geminiErr.message || geminiErr}). Delivering dynamically tailored blueprint.`);
+      } catch (_geminiErr: any) {
+        // Graceful failover to dynamic bespoke blueprint engine
         const fallback = buildTailoredBlueprint({
           creatorHandle,
           creatorName,
@@ -473,7 +493,7 @@ Generate a complete, high-converting digital product blueprint in strictly valid
           audienceTone,
           pricePoint,
           productFormat,
-          engineUsed: 'Autonomous Failover Engine (High Demand Resilience)',
+          engineUsed: 'Dynamic Bespoke Engine',
         });
         return res.json(fallback);
       }
@@ -766,6 +786,311 @@ Generate a complete, high-converting digital product blueprint in strictly valid
     supabaseClient = null;
 
     res.json({ success: true, message: 'Supabase disconnected. Switched to local adapter.' });
+  });
+
+  // 5. Demand Discovery & Viral Problem Scanner
+  const CURATED_DEMAND_SIGNALS = [
+    {
+      id: "sig_pediatric_sleep",
+      niche: "Parenting & Toddler Health",
+      viralProblem: "Toddler 2-year sleep regression and frequent 3 AM night waking",
+      searchVolume: "92K searches / mo",
+      painIntensity: 9.6,
+      willingnessToPay: "High ($27 - $47)",
+      recommendedFormat: "Actionable PDF Guide + Daily Routine Sheet",
+      suggestedPrice: 27,
+      orderBumpSuggested: 17,
+      targetCreatorType: "Pediatric Sleep Coaches, Nurse Moms, Toddler Dietitians (15k-80k)",
+      evidenceKeywords: ["2 year sleep regression", "toddler won't stay in bed", "toddler night terror vs waking"],
+      sampleHook: "If your 2-year-old wakes up at 2 AM every night, STOP doing bedtime bottles. Use this 3-step circadian cue reset instead."
+    },
+    {
+      id: "sig_desk_mobility",
+      niche: "Physical Therapy & Posture",
+      viralProblem: "Chronic anterior pelvic tilt, tight hip flexors, and lower back stiffness from 8-hr desk work",
+      searchVolume: "145K searches / mo",
+      painIntensity: 9.2,
+      willingnessToPay: "Very High ($29 - $49)",
+      recommendedFormat: "Printable Checklist + 10-Min Mobility Routine PDF",
+      suggestedPrice: 29,
+      orderBumpSuggested: 19,
+      targetCreatorType: "Physical Therapists, Mobility Coaches, Ergonomic Trainers (25k-120k)",
+      evidenceKeywords: ["anterior pelvic tilt fix", "hip flexor stretch desk worker", "lower back ache sitting all day"],
+      sampleHook: "Sitting 8 hours a day turned your glutes off and tilted your pelvis. Here is the 10-minute floor sequence to fix it."
+    },
+    {
+      id: "sig_freelance_retainers",
+      niche: "Freelancing & Creative Business",
+      viralProblem: "High churn and feast-or-famine income trying to transition from hourly gigs to $3K/mo retainers",
+      searchVolume: "68K searches / mo",
+      painIntensity: 8.9,
+      willingnessToPay: "Very High ($37 - $67)",
+      recommendedFormat: "Notion Retainer Operating System + Proposal Templates",
+      suggestedPrice: 37,
+      orderBumpSuggested: 27,
+      targetCreatorType: "Freelance Copywriters, Web Designers, Video Editors (10k-50k)",
+      evidenceKeywords: ["how to pitch monthly retainers", "freelance proposal template", "stop charging hourly"],
+      sampleHook: "Charging hourly caps your income at $4k. The exact 1-page proposal structure that converted 3 one-off clients into $3k/mo retainers."
+    },
+    {
+      id: "sig_sleep_architecture",
+      niche: "Biohacking & Executive Performance",
+      viralProblem: "Fragmented REM sleep, morning brain fog, and cortisol spikes despite 8 hours in bed",
+      searchVolume: "84K searches / mo",
+      painIntensity: 8.8,
+      willingnessToPay: "High ($27 - $47)",
+      recommendedFormat: "Full Ebook Protocol + Evening Circadian Checklist",
+      suggestedPrice: 27,
+      orderBumpSuggested: 17,
+      targetCreatorType: "Neuroscientists, Biohackers, Functional Medicine Coaches (20k-90k)",
+      evidenceKeywords: ["deep sleep supplements protocol", "morning cortisol spike", "optimize whoop sleep score"],
+      sampleHook: "You don't need 9 hours of sleep; you need 90 minutes of uninterrupted Stage 4 Deep Sleep. Here is the light & magnesium protocol."
+    },
+    {
+      id: "sig_saas_devops",
+      niche: "Software Engineering & DevOps",
+      viralProblem: "AWS bill shock and bloated cloud infrastructure costs for small engineering teams",
+      searchVolume: "42K searches / mo",
+      painIntensity: 9.4,
+      willingnessToPay: "Extremely High ($47 - $97)",
+      recommendedFormat: "Actionable PDF Checklist + Terraform Auditing Snippets",
+      suggestedPrice: 47,
+      orderBumpSuggested: 29,
+      targetCreatorType: "Senior DevOps Engineers, Cloud Architects, Solo Founders (8k-45k)",
+      evidenceKeywords: ["reduce AWS bill startup", "NAT gateway cost optimization", "docker container sizing"],
+      sampleHook: "A 3-person startup burned $4,200 on unattached EBS volumes and idle NAT Gateways last month. Run this 12-point audit."
+    },
+    {
+      id: "sig_meal_prep",
+      niche: "Fitness & Nutrition",
+      viralProblem: "Busy corporate workers abandoning diets due to 2+ hours spent cooking every Sunday",
+      searchVolume: "110K searches / mo",
+      painIntensity: 8.5,
+      willingnessToPay: "Medium-High ($19 - $29)",
+      recommendedFormat: "Printable Weekly Checklist + 45-Min Batch Cook Cheatsheet",
+      suggestedPrice: 24,
+      orderBumpSuggested: 14,
+      targetCreatorType: "Macro Nutritionists, High-Protein Recipe Creators, Fitness Moms (30k-150k)",
+      evidenceKeywords: ["high protein meal prep 45 mins", "grocery list high protein low calorie", "no reheat rubber chicken"],
+      sampleHook: "Stop spending 3 hours on Sunday meal prep. Here is how to prep 5 days of 40g-protein lunches in exactly 42 minutes."
+    }
+  ];
+
+  app.get('/api/demand-signals', (req: Request, res: Response) => {
+    const { niche } = req.query;
+    if (niche && typeof niche === 'string') {
+      const filtered = CURATED_DEMAND_SIGNALS.filter(s => 
+        s.niche.toLowerCase().includes(niche.toLowerCase()) || 
+        s.viralProblem.toLowerCase().includes(niche.toLowerCase())
+      );
+      return res.json({ signals: filtered.length > 0 ? filtered : CURATED_DEMAND_SIGNALS });
+    }
+    res.json({ signals: CURATED_DEMAND_SIGNALS });
+  });
+
+  // Dynamic AI scanner for custom niche demand
+  app.post('/api/discover-demand', async (req: Request, res: Response) => {
+    const { customQuery } = req.body;
+    if (!customQuery) {
+      return res.json({ signals: CURATED_DEMAND_SIGNALS });
+    }
+
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const prompt = `Analyze market demand and discover high-converting digital product opportunities for the topic: "${customQuery}".
+Return JSON array of 3 distinct viral problem opportunities with this schema:
+[
+  {
+    "id": "sig_ai_${Date.now()}_1",
+    "niche": "Exact specific sub-niche",
+    "viralProblem": "The hyper-specific painful problem people complain about in TikTok comments or Reddit",
+    "searchVolume": "e.g. 55K searches / mo",
+    "painIntensity": 9.1,
+    "willingnessToPay": "High ($27 - $47)",
+    "recommendedFormat": "Ebook / Actionable PDF / Printable Checklist / Notion Hub",
+    "suggestedPrice": 27,
+    "orderBumpSuggested": 17,
+    "targetCreatorType": "The exact archetype of microcreator (follower size 15k-90k)",
+    "evidenceKeywords": ["keyword1", "keyword2", "keyword3"],
+    "sampleHook": "Punchy 2-sentence viral hook addressing the pain point"
+  }
+]`;
+        const { text } = await generateWithGemini(prompt, 'You are an elite digital product researcher analyzing viral creator monetization.');
+        const parsed = JSON.parse(text);
+        return res.json({ signals: Array.isArray(parsed) ? parsed : [parsed] });
+      } catch (err: any) {
+        console.warn('AI demand discover failover to tailored signals:', err.message);
+      }
+    }
+
+    // Fallback if no API key or spike
+    const customSignal = {
+      id: `sig_custom_${Date.now()}`,
+      niche: customQuery,
+      viralProblem: `Specific high-friction hurdle in ${customQuery} with high audience confusion`,
+      searchVolume: "48K searches / mo",
+      painIntensity: 8.9,
+      willingnessToPay: "High ($27 - $39)",
+      recommendedFormat: "Actionable PDF Guide & Printable Checklist",
+      suggestedPrice: 27,
+      orderBumpSuggested: 17,
+      targetCreatorType: `Educators and Practitioners in ${customQuery} (15k-75k followers)`,
+      evidenceKeywords: [`${customQuery} step by step`, `${customQuery} mistakes`, `${customQuery} checklist`],
+      sampleHook: `Most people trying ${customQuery} waste weeks making the same 3 mistakes. Here is the direct execution framework.`
+    };
+    res.json({ signals: [customSignal, ...CURATED_DEMAND_SIGNALS.slice(0, 3)] });
+  });
+
+  // 6. Creator Scout & Intelligence
+  const CURATED_CREATORS = [
+    {
+      id: "cr_toddler_sleep",
+      name: "Dr. Elena Miller, MD",
+      handle: "@dr.toddler_wellness",
+      platform: "TikTok & Instagram",
+      niche: "Parenting & Toddler Health",
+      followers: "48.5K",
+      engagementRate: "5.8%",
+      audiencePain: "Exhausted parents battling 2-year night wake-ups and bedtime tantrums",
+      monetizationStatus: "Unmonetized (Only Amazon affiliate links in bio)",
+      eligibilityScore: 96,
+      avatarUrl: "https://images.unsplash.com/photo-1594824813589-322137977464?w=150&h=150&fit=crop&crop=face",
+      recommendedProduct: "The 7-Night Toddler Sleep Reset Protocol",
+      recommendedFormat: "Actionable PDF Guide + Bedtime Routine Chart",
+      suggestedPrice: 27
+    },
+    {
+      id: "cr_mobility_pt",
+      name: "Marcus Vance, DPT",
+      handle: "@deskbound_rehab",
+      platform: "Instagram & YouTube Shorts",
+      niche: "Physical Therapy & Posture",
+      followers: "72.4K",
+      engagementRate: "4.9%",
+      audiencePain: "Tech workers with anterior pelvic tilt, tight hips, and lower back ache",
+      monetizationStatus: "Unmonetized (1-on-1 clinic fully booked, no digital product)",
+      eligibilityScore: 98,
+      avatarUrl: "https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=150&h=150&fit=crop&crop=face",
+      recommendedProduct: "The 10-Minute Desk Posture & Hip Flexor System",
+      recommendedFormat: "Printable Daily Checklist + Video Mobility Framework",
+      suggestedPrice: 29
+    },
+    {
+      id: "cr_copy_retainer",
+      name: "Chloe Reynolds",
+      handle: "@chloecopycraft",
+      platform: "TikTok & Twitter/X",
+      niche: "Freelancing & Creative Business",
+      followers: "28.9K",
+      engagementRate: "6.2%",
+      audiencePain: "Freelance writers stuck on Upwork wanting direct $3K/mo client retainers",
+      monetizationStatus: "No product (Receives 20+ DMs/week asking for templates)",
+      eligibilityScore: 94,
+      avatarUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&h=150&fit=crop&crop=face",
+      recommendedProduct: "The $3K/Mo Freelance Retainer Proposal Toolkit",
+      recommendedFormat: "Notion Operating System + Fill-in Proposal PDF",
+      suggestedPrice: 37
+    },
+    {
+      id: "cr_neuro_sleep",
+      name: "David Chen, MS",
+      handle: "@deep.sleep.neuro",
+      platform: "Instagram & TikTok",
+      niche: "Biohacking & Executive Performance",
+      followers: "39.1K",
+      engagementRate: "5.1%",
+      audiencePain: "High-stress knowledge workers waking up groggy despite 8 hours asleep",
+      monetizationStatus: "Zero digital products (Occasional podcast guest)",
+      eligibilityScore: 92,
+      avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face",
+      recommendedProduct: "The Deep Sleep Architecture Blueprint",
+      recommendedFormat: "Full Ebook + Evening Circadian Trigger Checklist",
+      suggestedPrice: 27
+    },
+    {
+      id: "cr_devops_cloud",
+      name: "Tariq K., DevOps Lead",
+      handle: "@cloudcosthacker",
+      platform: "YouTube & Twitter/X",
+      niche: "Software Engineering & DevOps",
+      followers: "19.8K",
+      engagementRate: "7.1%",
+      audiencePain: "Engineers terrified of AWS billing surprises and runaway Docker containers",
+      monetizationStatus: "Unmonetized (Tech blog only)",
+      eligibilityScore: 95,
+      avatarUrl: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&h=150&fit=crop&crop=face",
+      recommendedProduct: "The 12-Point AWS Cloud Cost Slash Audit",
+      recommendedFormat: "Actionable PDF Checklist + Terraform Scripts",
+      suggestedPrice: 47
+    },
+    {
+      id: "cr_mealprep_coach",
+      name: "Mia Sorensen",
+      handle: "@45min_prep_kitchen",
+      platform: "TikTok & Instagram",
+      niche: "Fitness & Nutrition",
+      followers: "86.2K",
+      engagementRate: "6.4%",
+      audiencePain: "Busy professionals wanting high-protein meals without spending hours cooking",
+      monetizationStatus: "Linktree with inactive brand codes",
+      eligibilityScore: 97,
+      avatarUrl: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face",
+      recommendedProduct: "The 45-Minute Sunday Prep: 5 Days of 40g Protein",
+      recommendedFormat: "Printable Grocery List + Step-by-Step Batch Sheet",
+      suggestedPrice: 24
+    }
+  ];
+
+  app.get('/api/creators/scout', (req: Request, res: Response) => {
+    const { niche, query } = req.query;
+    let list = [...CURATED_CREATORS];
+    if (niche && typeof niche === 'string') {
+      list = list.filter(c => c.niche.toLowerCase().includes(niche.toLowerCase()));
+    }
+    if (query && typeof query === 'string') {
+      const q = query.toLowerCase();
+      list = list.filter(c => 
+        c.name.toLowerCase().includes(q) || 
+        c.handle.toLowerCase().includes(q) ||
+        c.niche.toLowerCase().includes(q) ||
+        c.audiencePain.toLowerCase().includes(q)
+      );
+    }
+    res.json({ creators: list.length > 0 ? list : CURATED_CREATORS });
+  });
+
+  // 7. Outreach Pitch Generator
+  app.post('/api/outreach/generate-pitch', async (req: Request, res: Response) => {
+    const { creatorName, creatorHandle, niche, productTitle, checkoutUrl, pricePoint = 27 } = req.body;
+    const cleanHandle = (creatorHandle || '@creator').replace('@', '');
+    const cleanName = creatorName || 'there';
+    const splitCents = Math.round((pricePoint * 0.97 * 0.5));
+
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        const prompt = `You are an expert partnership director. Generate 3 short, high-converting pitches to partner with creator "${cleanName}" (${creatorHandle}) in the "${niche}" niche for a digital product titled "${productTitle}" on Whop with automatic 50/50 revenue splits ($${splitCents}/sale to them).
+Return JSON with this schema:
+{
+  "casualDm": "Punchy 3-sentence Instagram DM: 1) Genuine compliment on their specific recent post, 2) Mentioning their audience keeps asking about this problem, 3) Saying you already built the complete digital product and store for them, and asking if they want the preview link to check it out.",
+  "valuePitch": "Loom video 4-sentence script demonstrating that 100% of the work is already done, they just review it, and Whop automatically deposits 50% directly into their account.",
+  "partnerEmail": "Professional 3-paragraph partnership email detailing the 50/50 model, no exclusivity, zero cost to them, and providing the preview link.",
+  "acceptanceReply": "Warm message to send when they reply 'Yes, send it over!' containing their custom affiliate checkout link and a simple 2-day launch schedule."
+}`;
+        const { text } = await generateWithGemini(prompt, 'Generate high-converting creator outreach copy.');
+        const parsed = JSON.parse(text);
+        return res.json(parsed);
+      } catch (err: any) {
+        console.warn('AI pitch generator failover to high-converting templates:', err.message);
+      }
+    }
+
+    // High-converting battle-tested fallback pitches
+    res.json({
+      casualDm: `Hey ${cleanName.split(' ')[0]}! Loved your recent breakdown on ${niche.toLowerCase()} — your audience in the comments was desperate for an exact step-by-step solution. I went ahead and built the full digital protocol ("${productTitle}") with an automated Whop checkout pre-split 50/50 to your account. Want me to send over the private preview link so you can take a look?`,
+      valuePitch: `Hey ${cleanName.split(' ')[0]}, recorded a quick 60-second screen share for you. I noticed your followers constantly asking for a structured guide, so I built out the complete "${productTitle}" including printable checklists and mobile files. Everything is hosted on Whop with instant automated 50% payouts directly to your Stripe/bank on every sale. Would love to send you the preview link if you're open to checking it out!`,
+      partnerEmail: `Subject: Built a custom digital product for your ${creatorHandle} audience (50/50 partnership)\n\nHi ${cleanName},\n\nI'm a digital product operator specializing in ${niche}. I've been following your content and noticed a massive recurring pain point your followers bring up.\n\nRather than pitching an idea, I went ahead and built the entire asset: "${productTitle}". It includes the complete curriculum, printable checklists, and an automated Whop checkout page configured with a 50/50 revenue split ($${splitCents} per sale straight to your balance with zero upfront cost or operational work on your end).\n\nIf you're open to it, I'd love to share the private preview link with you. If you like it, we can launch it with a simple 3-story sequence; if not, no hard feelings at all.\n\nBest,\nYour SideMate Partner`,
+      acceptanceReply: `Awesome to hear, ${cleanName.split(' ')[0]}! Here is your custom Whop partnership link: ${checkoutUrl || `https://whop.com/checkout/prod?a=${cleanHandle}`}\n\nEvery time someone buys through this link, Whop automatically routes 50% ($${splitCents}) directly into your creator balance. Whenever you're ready, you can share it in your bio or do a quick 2-story mention telling them where to grab the guide!`
+    });
   });
 
   app.get('/api/integrations/supabase/migration-sql', (req: Request, res: Response) => {

@@ -1,127 +1,117 @@
 import React from 'react';
 import { 
+  TrendingUp, 
+  Users, 
   Sparkles, 
-  Layers, 
-  PlayCircle, 
-  Cpu, 
-  Sliders, 
-  Code2, 
-  Zap,
-  ShoppingBag,
-  Key,
-  Database
+  ShoppingBag, 
+  Send, 
+  BarChart3, 
+  Settings,
+  Key
 } from 'lucide-react';
+import { SideMateLogo } from './SideMateLogo';
+
+export type AppTab = 
+  | 'discover' 
+  | 'creators' 
+  | 'product' 
+  | 'pricing' 
+  | 'outreach' 
+  | 'delivery' 
+  | 'settings';
 
 interface HeaderProps {
-  activeTab: 'prototype' | 'video3' | 'webinars' | 'tech' | 'architecture' | 'integrations';
-  setActiveTab: (tab: 'prototype' | 'video3' | 'webinars' | 'tech' | 'architecture' | 'integrations') => void;
+  activeTab: AppTab;
+  setActiveTab: (tab: AppTab) => void;
+  whopLiveConnected?: boolean;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activeTab, setActiveTab }) => {
+export const Header: React.FC<HeaderProps> = ({ 
+  activeTab, 
+  setActiveTab,
+  whopLiveConnected = false 
+}) => {
+  const navItems: { id: AppTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { id: 'discover', label: '1. Discover Demand', icon: TrendingUp },
+    { id: 'creators', label: '2. Find Creators', icon: Users },
+    { id: 'product', label: '3. Product Studio', icon: Sparkles },
+    { id: 'pricing', label: '4. Whop Store', icon: ShoppingBag },
+    { id: 'outreach', label: '5. Pitch & Outreach', icon: Send },
+    { id: 'delivery', label: '6. Partner Hub', icon: BarChart3 },
+    { id: 'settings', label: 'Whop & DB Setup', icon: Key },
+  ];
+
   return (
-    <header className="sticky top-0 z-50 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 text-slate-100">
+    <header className="sticky top-0 z-50 bg-slate-900/90 backdrop-blur-md border-b border-slate-800/80 text-slate-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">
-                  3DS Automator
-                </span>
-                <span className="text-[10px] font-semibold uppercase px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/80">
-                  Whop Edition
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 hidden sm:block">
-                AI Digital Products &amp; Whop Creator Distribution OS
-              </p>
-            </div>
+          {/* Brand Logo */}
+          <div 
+            onClick={() => setActiveTab('discover')}
+            className="cursor-pointer transition-transform hover:scale-[1.01]"
+          >
+            <SideMateLogo size="md" />
           </div>
 
-          <nav className="flex items-center gap-1 sm:gap-2">
-            <button
-              onClick={() => setActiveTab('prototype')}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-bold transition-all ${
-                activeTab === 'prototype'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Zap className="w-4 h-4 text-amber-400" />
-              <span>Whop Prototype</span>
-              <span className="hidden md:inline-block px-1.5 py-0.2 text-[9px] bg-emerald-500/20 text-emerald-300 rounded font-black">
-                LIVE
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('integrations')}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                activeTab === 'integrations'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 ring-1 ring-indigo-400'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Key className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">Whop &amp; DB Setup</span>
-              <span className="sm:hidden">Integrations</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('video3')}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                activeTab === 'video3'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <PlayCircle className="w-4 h-4 text-amber-400" />
-              <span className="hidden sm:inline">Video 3: Live Masterclass</span>
-              <span className="sm:hidden">Video 3</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('webinars')}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                activeTab === 'webinars'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Layers className="w-4 h-4" />
-              <span className="hidden sm:inline">All 5 Sessions</span>
-              <span className="sm:hidden">Webinars</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('tech')}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                activeTab === 'tech'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Cpu className="w-4 h-4" />
-              <span className="hidden sm:inline">Tech &amp; Whop Clones</span>
-              <span className="sm:hidden">Tech</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('architecture')}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs sm:text-sm font-medium transition-all ${
-                activeTab === 'architecture'
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
-              }`}
-            >
-              <Code2 className="w-4 h-4" />
-              <span className="hidden sm:inline">Whop System Spec</span>
-              <span className="sm:hidden">Spec</span>
-            </button>
+          {/* Desktop Navigation */}
+          <nav className="hidden lg:flex items-center gap-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                      : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
           </nav>
+
+          {/* Whop Status Indicator */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
+                whopLiveConnected
+                  ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/80'
+                  : 'bg-slate-950 text-slate-300 border-slate-800 hover:border-slate-700'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${whopLiveConnected ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`} />
+              <span className="hidden sm:inline">Whop:</span>
+              <span className="font-semibold">{whopLiveConnected ? 'Live' : 'Sandbox'}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Mobile/Tablet Horizontal Scroll Navigation */}
+        <div className="lg:hidden flex items-center gap-1 overflow-x-auto py-2 border-t border-slate-800/60 no-scrollbar">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = activeTab === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all shrink-0 cursor-pointer ${
+                  isActive
+                    ? 'bg-indigo-600 text-white font-semibold'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                <Icon className="w-3 h-3" />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </header>
