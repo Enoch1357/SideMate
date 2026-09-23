@@ -1,0 +1,6 @@
+{
+  "name": "3DS Automator - AI Digital Product & Creator OS",
+  "description": "Comprehensive workflow analysis, technical architectural blueprint, and interactive automation workbench for building AI digital products and microcreator distribution funnels based on the 3DS framework.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
