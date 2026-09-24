@@ -245,62 +245,88 @@ async function startServer() {
     const cleanNiche = niche.split('&')[0].trim();
     const whopSlug = `whop-${cleanHandle.toLowerCase()}-${Date.now().toString().slice(-4)}`;
 
+    const modules = [
+      {
+        moduleNumber: 1,
+        pillarNumber: 1,
+        title: 'Module 1: Diagnosis & Root Cause Analysis',
+        objective: 'Deconstructs the root issues causing this problem and removes guilt',
+        keyActionItem: 'Identify biological and behavioral triggers',
+        deliverables: [
+          'Deconstruction of why previous attempts failed',
+          'Identifying biological and behavioral triggers',
+          'The 3 friction points specific to this audience',
+        ],
+        summary: 'Deconstructs the root issues causing this problem and removes guilt by explaining the underlying physiological/structural mechanisms.',
+        fullContentMarkdown: `### Module 1: Understanding the Root Cause\n\nMost advice tells you to try harder. In reality, the breakdown happens in the first 30 minutes of the morning. When followers ask ${creatorHandle} why they feel stuck, the answer is rarely lack of willpower.\n\nIn this module, we audit your baseline habits and eliminate the 3 hidden stressors sabotaging your progress before you even start the day.`,
+      },
+      {
+        moduleNumber: 2,
+        pillarNumber: 2,
+        title: 'Module 2: The Core 14-Day Step-by-Step Protocol',
+        objective: 'Phased daily execution plan for immediate compliance',
+        keyActionItem: 'Lock in the 3 core daily non-negotiables',
+        deliverables: [
+          'Phased morning and evening sequence',
+          'Zero-decision fatigue daily checklists',
+          'Target adjustments for high-stress days',
+        ],
+        summary: 'The primary solution engine. A phased 14-day daily plan with morning and evening protocols designed for immediate compliance.',
+        fullContentMarkdown: `### Module 2: The 14-Day Tactical Execution Plan\n\n- **Phase 1 (Days 1–3): Reset.** Strip away non-essential variables.\n- **Phase 2 (Days 4–9): Stabilization.** Lock in the 3 core non-negotiables.\n- **Phase 3 (Days 10–14): Optimization.** Transition from active protocol into an automated, effortless background habit.`,
+      },
+      {
+        moduleNumber: 3,
+        pillarNumber: 3,
+        title: 'Module 3: 1-Page Printable Action Checklist',
+        objective: 'Single-sheet daily tracker to eliminate decision fatigue',
+        keyActionItem: 'Check off 3 non-negotiables before 10:00 AM',
+        deliverables: [
+          'Refrigerator / Desk printable checklist',
+          'Lock-screen mobile wallpaper checklist',
+          '5-minute emergency reset routine',
+        ],
+        summary: 'The highest utility asset for impulse buyers: a single-sheet daily habit tracker to eliminate decision fatigue.',
+        fullContentMarkdown: `### Module 3: 1-Page Daily Tracker\n\nKeep this sheet on your refrigerator or lockscreen. Check off the 3 non-negotiables before 10:00 AM. If you stumble, follow the 2-minute recovery drill.`,
+      },
+      {
+        moduleNumber: 4,
+        pillarNumber: 4,
+        title: 'Module 4: Top 15 Emergency FAQs & Edge Cases',
+        objective: 'Prevent refunds and resolve edge cases with scripted answers',
+        keyActionItem: 'Implement time-shift buffer for schedule disruptions',
+        deliverables: [
+          'Direct answers to top 15 comment objections',
+          'Travel & dining-out adjustments',
+          'Long-term maintenance guide',
+        ],
+        summary: 'Answers to the top 15 most frequent follower questions scraped directly from comment threads to prevent refunds and drive word-of-mouth.',
+        fullContentMarkdown: `### Module 4: Resolving Real-World Edge Cases\n\n- *What if I work night shifts or travel?* Implement the Time-Shift Buffer Protocol on page 19.\n- *How quickly should I expect noticeable results?* Most report significant improvement within 72 hours of Day 3.\n- *Can I combine this with existing routines?* Yes, this protocol acts as an overlay.`,
+      },
+    ];
+
+    const pillars = modules.map(m => ({
+      pillarNumber: m.pillarNumber,
+      title: m.title,
+      objective: m.objective,
+      keyActionItem: m.keyActionItem,
+      fullContentMarkdown: m.fullContentMarkdown,
+    }));
+
     return {
       productTitle: `The ${cleanNiche} Reset Protocol`,
       subtitle: `A 14-Day Actionable System to eliminate ${viralProblem.toLowerCase()} by ${creatorName}`,
       productType: productFormat,
+      formatType: productFormat,
+      creatorAttribution: creatorName,
       targetAudience: `Active followers of ${creatorHandle} seeking immediate relief from ${viralProblem}`,
       viralProblemSolved: viralProblem,
       suggestedPricePoint: pricePoint,
+      pricePoint: pricePoint,
       orderBumpTitle: 'Audio Walkthrough & Notion Operating Dashboard',
       orderBumpPrice: 17,
       valueProposition: `Built specifically around ${creatorName}'s most effective frameworks. Eliminates overthinking by condensing weeks of confusing research into a daily 15-minute checklist.`,
-      curatedModules: [
-        {
-          moduleNumber: 1,
-          title: 'Module 1: Diagnosis & Root Cause Analysis',
-          deliverables: [
-            'Deconstruction of why previous attempts failed',
-            'Identifying biological and behavioral triggers',
-            'The 3 friction points specific to this audience',
-          ],
-          summary: 'Deconstructs the root issues causing this problem and removes guilt by explaining the underlying physiological/structural mechanisms.',
-          fullContentMarkdown: `### Module 1: Understanding the Root Cause\n\nMost advice tells you to try harder. In reality, the breakdown happens in the first 30 minutes of the morning. When followers ask ${creatorHandle} why they feel stuck, the answer is rarely lack of willpower.\n\nIn this module, we audit your baseline habits and eliminate the 3 hidden stressors sabotaging your progress before you even start the day.`,
-        },
-        {
-          moduleNumber: 2,
-          title: 'Module 2: The Core 14-Day Step-by-Step Protocol',
-          deliverables: [
-            'Phased morning and evening sequence',
-            'Zero-decision fatigue daily checklists',
-            'Target adjustments for high-stress days',
-          ],
-          summary: 'The primary solution engine. A phased 14-day daily plan with morning and evening protocols designed for immediate compliance.',
-          fullContentMarkdown: `### Module 2: The 14-Day Tactical Execution Plan\n\n- **Phase 1 (Days 1–3): Reset.** Strip away non-essential variables.\n- **Phase 2 (Days 4–9): Stabilization.** Lock in the 3 core non-negotiables.\n- **Phase 3 (Days 10–14): Optimization.** Transition from active protocol into an automated, effortless background habit.`,
-        },
-        {
-          moduleNumber: 3,
-          title: 'Module 3: 1-Page Printable Action Checklist',
-          deliverables: [
-            'Refrigerator / Desk printable checklist',
-            'Lock-screen mobile wallpaper checklist',
-            '5-minute emergency reset routine',
-          ],
-          summary: 'The highest utility asset for impulse buyers: a single-sheet daily habit tracker to eliminate decision fatigue.',
-          fullContentMarkdown: `### Module 3: 1-Page Daily Tracker\n\nKeep this sheet on your refrigerator or lockscreen. Check off the 3 non-negotiables before 10:00 AM. If you stumble, follow the 2-minute recovery drill.`,
-        },
-        {
-          moduleNumber: 4,
-          title: 'Module 4: Top 15 Emergency FAQs & Edge Cases',
-          deliverables: [
-            'Direct answers to top 15 comment objections',
-            'Travel & dining-out adjustments',
-            'Long-term maintenance guide',
-          ],
-          summary: 'Answers to the top 15 most frequent follower questions scraped directly from comment threads to prevent refunds and drive word-of-mouth.',
-          fullContentMarkdown: `### Module 4: Resolving Real-World Edge Cases\n\n- *What if I work night shifts or travel?* Implement the Time-Shift Buffer Protocol on page 19.\n- *How quickly should I expect noticeable results?* Most report significant improvement within 72 hours of Day 3.\n- *Can I combine this with existing routines?* Yes, this protocol acts as an overlay.`,
-        },
-      ],
+      curatedModules: modules,
+      pillars,
       printableChecklist: [
         'Audit current baseline using the 3-minute diagnostic score',
         'Complete morning non-negotiable sequence (under 12 minutes)',
@@ -478,8 +504,28 @@ Generate a complete, high-converting digital product blueprint in strictly valid
           isLiveSynced: !!process.env.WHOP_API_KEY,
         };
 
+        const modules = Array.isArray(parsed.curatedModules) ? parsed.curatedModules : [];
+        const pillars = Array.isArray(parsed.pillars) && parsed.pillars.length > 0
+          ? parsed.pillars
+          : modules.map((m: any, idx: number) => ({
+              pillarNumber: m.pillarNumber || m.moduleNumber || idx + 1,
+              title: m.title || `Pillar 0${idx + 1}`,
+              objective: m.objective || m.summary || 'Immediate core transformation',
+              keyActionItem: m.keyActionItem || (m.deliverables && m.deliverables[0]) || 'Execute protocol step',
+              fullContentMarkdown: m.fullContentMarkdown || m.summary || '',
+            }));
+
         return res.json({
           ...parsed,
+          pillars,
+          curatedModules: modules,
+          pricePoint: parsed.pricePoint ?? parsed.suggestedPricePoint ?? pricePoint,
+          suggestedPricePoint: parsed.suggestedPricePoint ?? parsed.pricePoint ?? pricePoint,
+          formatType: parsed.formatType || parsed.productType || productFormat,
+          productType: parsed.productType || parsed.formatType || productFormat,
+          creatorAttribution: parsed.creatorAttribution || creatorName,
+          printableChecklist: Array.isArray(parsed.printableChecklist) ? parsed.printableChecklist : [],
+          faqItems: Array.isArray(parsed.faqItems) ? parsed.faqItems : [],
           whopConfig,
           engineUsed: modelUsed,
         });

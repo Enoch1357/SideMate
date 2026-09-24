@@ -23,14 +23,26 @@ interface OutreachPitchViewProps {
   selectedCreator?: CreatorProfile | null;
   blueprint?: GeneratedProductBlueprint | null;
   checkoutUrl?: string;
+  savedOutreachData?: {
+    activeTab: 'dm' | 'loom' | 'email';
+    pipelineStatus: 'ready' | 'pitched' | 'positive' | 'live';
+  };
+  onUpdateOutreachData?: (data: {
+    activeTab: 'dm' | 'loom' | 'email';
+    pipelineStatus: 'ready' | 'pitched' | 'positive' | 'live';
+  }) => void;
   onProceedToDelivery: () => void;
+  onBackToWhop?: () => void;
 }
 
 export const OutreachPitchView: React.FC<OutreachPitchViewProps> = ({
   selectedCreator,
   blueprint,
   checkoutUrl,
+  savedOutreachData,
+  onUpdateOutreachData,
   onProceedToDelivery,
+  onBackToWhop,
 }) => {
   const creatorName = selectedCreator?.name || 'Dr. Elena Miller, MD';
   const creatorHandle = selectedCreator?.handle || '@dr.toddler_wellness';
@@ -40,9 +52,23 @@ export const OutreachPitchView: React.FC<OutreachPitchViewProps> = ({
   const price = blueprint?.pricePoint || 27;
   const splitShare = Math.round(price * 0.97 * 0.5);
 
-  const [activeTab, setActiveTab] = useState<'dm' | 'loom' | 'email'>('dm');
-  const [pipelineStatus, setPipelineStatus] = useState<'ready' | 'pitched' | 'positive' | 'live'>('ready');
+  const [activeTab, setActiveTab] = useState<'dm' | 'loom' | 'email'>(
+    savedOutreachData?.activeTab || 'dm'
+  );
+  const [pipelineStatus, setPipelineStatus] = useState<'ready' | 'pitched' | 'positive' | 'live'>(
+    savedOutreachData?.pipelineStatus || 'ready'
+  );
   const [copiedType, setCopiedType] = useState<string | null>(null);
+
+  const handleTabChange = (tab: 'dm' | 'loom' | 'email') => {
+    setActiveTab(tab);
+    onUpdateOutreachData?.({ activeTab: tab, pipelineStatus });
+  };
+
+  const handleStatusChange = (status: 'ready' | 'pitched' | 'positive' | 'live') => {
+    setPipelineStatus(status);
+    onUpdateOutreachData?.({ activeTab, pipelineStatus: status });
+  };
 
   // High-converting battle-tested scripts
   const casualDm = `Hey ${creatorName.split(' ')[0]}! Loved your recent breakdown on ${niche.toLowerCase()} — your audience in the comments was desperate for an exact step-by-step solution. I went ahead and built the full digital protocol ("${productTitle}") with an automated Whop checkout pre-split 50/50 to your account. Want me to send over the private preview link so you can take a look?`;
@@ -83,9 +109,19 @@ Launch steps are super simple:
     <div className="space-y-6 pb-16">
       {/* Banner */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-purple-950/30 border border-slate-800 p-6 sm:p-7 shadow-sm">
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-semibold mb-2.5">
-          <Send className="w-3.5 h-3.5 text-purple-400" />
-          <span>Step 5: Creator Pitch &amp; Response Pipeline</span>
+        <div className="flex items-center gap-2 flex-wrap mb-2.5">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-500/10 border border-purple-500/20 text-purple-300 text-xs font-semibold">
+            <Send className="w-3.5 h-3.5 text-purple-400" />
+            <span>Step 5: Creator Pitch &amp; Response Pipeline</span>
+          </div>
+          {onBackToWhop && (
+            <button
+              onClick={onBackToWhop}
+              className="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 transition-colors cursor-pointer"
+            >
+              ← Back to Whop Store
+            </button>
+          )}
         </div>
         <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
           Pitch Creator &amp; Share Whop Link
@@ -109,7 +145,7 @@ Launch steps are super simple:
 
         <div className="grid grid-cols-4 gap-2 text-xs font-semibold">
           <button
-            onClick={() => setPipelineStatus('ready')}
+            onClick={() => handleStatusChange('ready')}
             className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${
               pipelineStatus === 'ready'
                 ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
@@ -120,7 +156,7 @@ Launch steps are super simple:
           </button>
 
           <button
-            onClick={() => setPipelineStatus('pitched')}
+            onClick={() => handleStatusChange('pitched')}
             className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${
               pipelineStatus === 'pitched'
                 ? 'bg-amber-600 text-white border-amber-500 shadow-sm'
@@ -131,7 +167,7 @@ Launch steps are super simple:
           </button>
 
           <button
-            onClick={() => setPipelineStatus('positive')}
+            onClick={() => handleStatusChange('positive')}
             className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${
               pipelineStatus === 'positive'
                 ? 'bg-emerald-600 text-white border-emerald-500 shadow-sm'
@@ -142,7 +178,7 @@ Launch steps are super simple:
           </button>
 
           <button
-            onClick={() => setPipelineStatus('live')}
+            onClick={() => handleStatusChange('live')}
             className={`py-2 px-3 rounded-xl border text-center transition-all cursor-pointer ${
               pipelineStatus === 'live'
                 ? 'bg-teal-600 text-white border-teal-500 shadow-sm'
@@ -165,7 +201,7 @@ Launch steps are super simple:
               </h3>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setActiveTab('dm')}
+                  onClick={() => handleTabChange('dm')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     activeTab === 'dm'
                       ? 'bg-indigo-600 text-white'
@@ -175,7 +211,7 @@ Launch steps are super simple:
                   Instagram DM
                 </button>
                 <button
-                  onClick={() => setActiveTab('loom')}
+                  onClick={() => handleTabChange('loom')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     activeTab === 'loom'
                       ? 'bg-indigo-600 text-white'
@@ -185,7 +221,7 @@ Launch steps are super simple:
                   Loom Script
                 </button>
                 <button
-                  onClick={() => setActiveTab('email')}
+                  onClick={() => handleTabChange('email')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     activeTab === 'email'
                       ? 'bg-indigo-600 text-white'

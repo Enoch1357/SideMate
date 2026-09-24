@@ -39,7 +39,13 @@ interface IntegrationStatus {
   };
 }
 
-export const WhopSupabaseIntegrationView: React.FC = () => {
+interface WhopSupabaseIntegrationViewProps {
+  onBack?: () => void;
+}
+
+export const WhopSupabaseIntegrationView: React.FC<WhopSupabaseIntegrationViewProps> = ({
+  onBack,
+}) => {
   // Integration Status
   const [status, setStatus] = useState<IntegrationStatus | null>(null);
   const [isLoadingStatus, setIsLoadingStatus] = useState<boolean>(true);
@@ -228,8 +234,16 @@ export const WhopSupabaseIntegrationView: React.FC = () => {
         <div className="absolute top-0 right-0 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl -z-0"></div>
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold uppercase tracking-wider mb-2">
-              <Key className="w-4 h-4 text-amber-400" /> Platform Connections &amp; Persistence
+            <div className="flex items-center gap-2 flex-wrap text-indigo-400 text-xs font-bold uppercase tracking-wider mb-2">
+              <span className="flex items-center gap-1.5"><Key className="w-4 h-4 text-amber-400" /> Platform Connections &amp; Persistence</span>
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="text-xs font-semibold lowercase text-slate-400 hover:text-white px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  ← Return to Workflow
+                </button>
+              )}
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
               Whop &amp; Supabase (PostgreSQL) Integration Hub

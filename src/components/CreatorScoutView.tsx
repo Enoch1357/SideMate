@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Users, 
   Search, 
@@ -34,20 +34,45 @@ export interface CreatorProfile {
 
 interface CreatorScoutViewProps {
   initialDemandSignal?: DemandSignal | null;
+  selectedCreator?: CreatorProfile | null;
+  savedCreators?: CreatorProfile[];
+  onCreatorsChange?: (creators: CreatorProfile[]) => void;
+  customCreators?: CreatorProfile[];
+  onAddCustomCreator?: (creator: CreatorProfile) => void;
+  initialNicheFilter?: string;
+  initialSearchQuery?: string;
+  onFiltersChange?: (niche: string, query: string) => void;
+  onBack?: () => void;
   onSelectCreatorForProduct: (creator: CreatorProfile) => void;
   onDirectPitchCreator?: (creator: CreatorProfile) => void;
 }
 
 export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
   initialDemandSignal,
+  selectedCreator,
+  savedCreators,
+  onCreatorsChange,
+  customCreators = [],
+  onAddCustomCreator,
+  initialNicheFilter,
+  initialSearchQuery = '',
+  onFiltersChange,
+  onBack,
   onSelectCreatorForProduct,
 }) => {
-  const [creators, setCreators] = useState<CreatorProfile[]>([]);
+  const [creators, setCreators] = useState<CreatorProfile[]>(() => (savedCreators && savedCreators.length > 0 ? savedCreators : []));
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [activeNicheFilter, setActiveNicheFilter] = useState(
-    initialDemandSignal?.niche || 'all'
+    initialNicheFilter || initialDemandSignal?.niche || 'all'
   );
+
+  // Keep creators state synchronized whenever savedCreators changes in parent session
+  useEffect(() => {
+    if (savedCreators && savedCreators.length > 0) {
+      setCreators(savedCreators);
+    }
+  }, [savedCreators]);
 
   // Custom Creator Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -66,7 +91,12 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
 
       const res = await fetch(`/api/creators/scout?${params.toString()}`);
       const data = await res.json();
-      setCreators(data.creators || []);
+      const fetched: CreatorProfile[] = data.creators || [];
+
+      // Merge custom creators that match filter
+      const merged = [...customCreators, ...fetched.filter(f => !customCreators.some(c => c.id === f.id))];
+      setCreators(merged);
+      onCreatorsChange?.(merged);
     } catch (err) {
       console.error('Failed to scout creators:', err);
     } finally {
@@ -74,9 +104,26 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
     }
   };
 
+  // Only auto-fetch default creators on initial empty session boot if no saved creators exist
   useEffect(() => {
+    if (!savedCreators || savedCreators.length === 0) {
+      fetchCreators(activeNicheFilter, searchQuery);
+      onFiltersChange?.(activeNicheFilter, searchQuery);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleNicheFilterChange = (niche: string) => {
+    setActiveNicheFilter(niche);
+    fetchCreators(niche, searchQuery);
+    onFiltersChange?.(niche, searchQuery);
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
     fetchCreators(activeNicheFilter, searchQuery);
-  }, [activeNicheFilter]);
+    onFiltersChange?.(activeNicheFilter, searchQuery);
+  };
 
   const handleAddCustomCreator = (e: React.FormEvent) => {
     e.preventDefault();
@@ -99,7 +146,10 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
       suggestedPrice: 27,
     };
 
-    setCreators([newCreator, ...creators]);
+    const updated = [newCreator, ...creators];
+    setCreators(updated);
+    onCreatorsChange?.(updated);
+    onAddCustomCreator?.(newCreator);
     setShowAddModal(false);
     setCustomHandle('');
     setCustomName('');
@@ -112,9 +162,19 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
       <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-teal-950/30 border border-slate-800 p-6 sm:p-7 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-300 text-xs font-semibold mb-2.5">
-              <Users className="w-3.5 h-3.5 text-teal-400" />
-              <span>Step 2: Microcreator Scouting &amp; Distribution Partners</span>
+            <div className="flex items-center gap-2 flex-wrap mb-2.5">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 text-teal-300 text-xs font-semibold">
+                <Users className="w-3.5 h-3.5 text-teal-400" />
+                <span>Step 2: Microcreator Scouting &amp; Distribution Partners</span>
+              </div>
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  ← Back to Demand
+                </button>
+              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
               Scout High-Engagement Microcreators
@@ -145,7 +205,7 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
               </span>
             </div>
             <button
-              onClick={() => setActiveNicheFilter('all')}
+              onClick={() => handleNicheFilterChange('all')}
               className="text-[11px] text-indigo-300 hover:text-white underline cursor-pointer"
             >
               View all creators
@@ -155,7 +215,7 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
 
         {/* Search & Quick Filters */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-5 mt-5 border-t border-slate-800/80">
-          <div className="relative flex-1 max-w-sm">
+          <form onSubmit={handleSearchSubmit} className="relative flex-1 max-w-sm">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -164,11 +224,11 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
               placeholder="Search creator name, @handle, or niche..."
               className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-teal-500 transition-colors"
             />
-          </div>
+          </form>
 
           <div className="flex items-center gap-1.5 overflow-x-auto text-xs">
             <button
-              onClick={() => setActiveNicheFilter('all')}
+              onClick={() => handleNicheFilterChange('all')}
               className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                 activeNicheFilter === 'all'
                   ? 'bg-teal-600 text-white font-semibold'
@@ -178,7 +238,7 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
               All Niches
             </button>
             <button
-              onClick={() => setActiveNicheFilter('Parenting')}
+              onClick={() => handleNicheFilterChange('Parenting')}
               className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                 activeNicheFilter.includes('Parenting')
                   ? 'bg-teal-600 text-white font-semibold'
@@ -188,7 +248,7 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
               Parenting
             </button>
             <button
-              onClick={() => setActiveNicheFilter('Physical Therapy')}
+              onClick={() => handleNicheFilterChange('Physical Therapy')}
               className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                 activeNicheFilter.includes('Physical Therapy')
                   ? 'bg-teal-600 text-white font-semibold'
@@ -198,7 +258,7 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
               Mobility
             </button>
             <button
-              onClick={() => setActiveNicheFilter('Freelancing')}
+              onClick={() => handleNicheFilterChange('Freelancing')}
               className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                 activeNicheFilter.includes('Freelancing')
                   ? 'bg-teal-600 text-white font-semibold'
@@ -208,7 +268,7 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
               Business
             </button>
             <button
-              onClick={() => setActiveNicheFilter('Nutrition')}
+              onClick={() => handleNicheFilterChange('Nutrition')}
               className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
                 activeNicheFilter.includes('Nutrition')
                   ? 'bg-teal-600 text-white font-semibold'
@@ -223,13 +283,27 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
 
       {/* Creator Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {creators.map((creator) => (
-          <div
-            key={creator.id}
-            className="rounded-xl bg-slate-900/80 border border-slate-800/90 hover:border-slate-700/80 p-5 flex flex-col justify-between transition-all duration-200 group hover:shadow-lg hover:shadow-teal-950/20"
-          >
-            <div className="space-y-4">
-              {/* Profile Card Header */}
+        {(creators || []).map((creator) => {
+          const isSelected = selectedCreator?.id === creator.id;
+          return (
+            <div
+              key={creator.id}
+              className={`rounded-xl bg-slate-900/80 border p-5 flex flex-col justify-between transition-all duration-200 group hover:shadow-lg ${
+                isSelected
+                  ? 'border-teal-500 ring-2 ring-teal-500/30 shadow-teal-950/40 bg-teal-950/20'
+                  : 'border-slate-800/90 hover:border-slate-700/80 hover:shadow-teal-950/20'
+              }`}
+            >
+              <div className="space-y-4">
+                {/* Active in workflow badge */}
+                {isSelected && (
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-teal-500/20 text-teal-300 text-[10px] font-bold border border-teal-500/30">
+                    <Sparkles className="w-3 h-3 text-amber-300" />
+                    <span>Selected Distribution Partner</span>
+                  </div>
+                )}
+
+                {/* Profile Card Header */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3">
                   <img
@@ -300,7 +374,8 @@ export const CreatorScoutView: React.FC<CreatorScoutViewProps> = ({
               </button>
             </div>
           </div>
-        ))}
+        );
+      })}
       </div>
 
       {/* Add Custom Creator Modal */}

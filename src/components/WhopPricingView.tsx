@@ -18,23 +18,73 @@ import { GeneratedProductBlueprint } from './ProductStudioView';
 
 interface WhopPricingViewProps {
   blueprint: GeneratedProductBlueprint | null;
+  savedPricingData?: {
+    basePrice: number;
+    includeBump: boolean;
+    bumpPrice: number;
+    operatorSplitPct: number;
+    publishedData: any | null;
+    checkoutUrl: string;
+  };
+  onUpdatePricingData?: (data: {
+    basePrice: number;
+    includeBump: boolean;
+    bumpPrice: number;
+    operatorSplitPct: number;
+    publishedData: any | null;
+    checkoutUrl: string;
+  }) => void;
   onProceedToPitch: (whopData: { checkoutUrl: string; productTitle: string; price: number }) => void;
   onOpenSettings: () => void;
+  onBackToStudio?: () => void;
 }
 
 export const WhopPricingView: React.FC<WhopPricingViewProps> = ({
   blueprint,
+  savedPricingData,
+  onUpdatePricingData,
   onProceedToPitch,
   onOpenSettings,
+  onBackToStudio,
 }) => {
-  const [basePrice, setBasePrice] = useState<number>(blueprint?.pricePoint || 27);
-  const [includeBump, setIncludeBump] = useState<boolean>(true);
-  const [bumpPrice, setBumpPrice] = useState<number>(blueprint?.orderBumpPrice || 17);
-  const [operatorSplitPct, setOperatorSplitPct] = useState<number>(50);
+  const [basePrice, setBasePrice] = useState<number>(
+    savedPricingData?.basePrice || blueprint?.pricePoint || 27
+  );
+  const [includeBump, setIncludeBump] = useState<boolean>(
+    savedPricingData ? savedPricingData.includeBump : true
+  );
+  const [bumpPrice, setBumpPrice] = useState<number>(
+    savedPricingData?.bumpPrice || blueprint?.orderBumpPrice || 17
+  );
+  const [operatorSplitPct, setOperatorSplitPct] = useState<number>(
+    savedPricingData?.operatorSplitPct || 50
+  );
 
   const [isPublishing, setIsPublishing] = useState<boolean>(false);
-  const [publishedData, setPublishedData] = useState<any>(null);
+  const [publishedData, setPublishedData] = useState<any>(
+    savedPricingData?.publishedData || null
+  );
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
+
+  const syncUpdate = (overrides?: Partial<{
+    basePrice: number;
+    includeBump: boolean;
+    bumpPrice: number;
+    operatorSplitPct: number;
+    publishedData: any | null;
+    checkoutUrl: string;
+  }>) => {
+    if (!onUpdatePricingData) return;
+    onUpdatePricingData({
+      basePrice,
+      includeBump,
+      bumpPrice,
+      operatorSplitPct,
+      publishedData,
+      checkoutUrl: publishedData?.checkoutUrl || savedPricingData?.checkoutUrl || '',
+      ...overrides,
+    });
+  };
 
   // Split calculation
   const gross = includeBump ? basePrice + bumpPrice : basePrice;
@@ -59,6 +109,7 @@ export const WhopPricingView: React.FC<WhopPricingViewProps> = ({
 
       const data = await res.json();
       setPublishedData(data);
+      syncUpdate({ publishedData: data, checkoutUrl: data.checkoutUrl });
     } catch (err) {
       console.error('Failed to post to Whop:', err);
     } finally {
@@ -79,9 +130,19 @@ export const WhopPricingView: React.FC<WhopPricingViewProps> = ({
       <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-emerald-950/30 border border-slate-800 p-6 sm:p-7 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold mb-2.5">
-              <ShoppingBag className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Step 4: Whop Store Pricing &amp; Automated 50/50 Splits</span>
+            <div className="flex items-center gap-2 flex-wrap mb-2.5">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-300 text-xs font-semibold">
+                <ShoppingBag className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Step 4: Whop Store Pricing &amp; Automated 50/50 Splits</span>
+              </div>
+              {onBackToStudio && (
+                <button
+                  onClick={onBackToStudio}
+                  className="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  ← Back to Product Studio
+                </button>
+              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
               Post Products to Whop Store

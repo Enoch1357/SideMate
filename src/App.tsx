@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Header, AppTab } from './components/Header';
 import { DiscoverDemandView, DemandSignal } from './components/DiscoverDemandView';
 import { CreatorScoutView, CreatorProfile } from './components/CreatorScoutView';
@@ -7,19 +7,112 @@ import { WhopPricingView } from './components/WhopPricingView';
 import { OutreachPitchView } from './components/OutreachPitchView';
 import { PartnerDeliveryView } from './components/PartnerDeliveryView';
 import { WhopSupabaseIntegrationView } from './components/WhopSupabaseIntegrationView';
+import { WorkflowStepperBar } from './components/WorkflowStepperBar';
 import { SideMateLogo } from './components/SideMateLogo';
+import { 
+  WorkflowSession, 
+  loadWorkflowSession, 
+  saveWorkflowSession, 
+  clearWorkflowSession 
+} from './utils/workflowStorage';
+
+const VALID_TABS: AppTab[] = ['discover', 'creators', 'product', 'pricing', 'outreach', 'delivery', 'settings'];
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<AppTab>('discover');
-  
-  // Shared Workflow State
-  const [selectedDemandSignal, setSelectedDemandSignal] = useState<DemandSignal | null>(null);
-  const [selectedCreator, setSelectedCreator] = useState<CreatorProfile | null>(null);
-  const [generatedBlueprint, setGeneratedBlueprint] = useState<GeneratedProductBlueprint | null>(null);
-  const [checkoutUrl, setCheckoutUrl] = useState<string>('');
+  // Load persistent session from localStorage on initial render
+  const [session, setSession] = useState<WorkflowSession>(() => {
+    const loaded = loadWorkflowSession();
+    // Check if URL hash specifies a tab
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hashTab = window.location.hash.replace('#', '') as AppTab;
+      if (VALID_TABS.includes(hashTab)) {
+        return { 
+          ...loaded, 
+          currentStage: hashTab,
+          activeTab: hashTab 
+        };
+      }
+    }
+    return {
+      ...loaded,
+      activeTab: loaded.currentStage
+    };
+  });
+
   const [whopLiveConnected, setWhopLiveConnected] = useState<boolean>(false);
 
-  // Check Whop connection on load
+  // Sync session changes directly to localStorage
+  const updateSession = useCallback((updates: Partial<WorkflowSession>) => {
+    setSession((prev) => {
+      const nextSession: WorkflowSession = {
+        ...prev,
+        ...updates,
+        currentStage: updates.currentStage || updates.activeTab || prev.currentStage,
+        activeTab: updates.activeTab || updates.currentStage || prev.activeTab || prev.currentStage,
+        lastSaved: Date.now(),
+        lastUpdated: Date.now(),
+      };
+      saveWorkflowSession(nextSession);
+      return nextSession;
+    });
+  }, []);
+
+  // Handle tab switching and sync with URL hash
+  const handleTabChange = useCallback((newTab: AppTab) => {
+    setSession((prev) => {
+      const nextSession: WorkflowSession = {
+        ...prev,
+        previousStage: prev.currentStage !== newTab ? prev.currentStage : prev.previousStage,
+        currentStage: newTab,
+        activeTab: newTab,
+        lastSaved: Date.now(),
+        lastUpdated: Date.now(),
+      };
+      saveWorkflowSession(nextSession);
+      return nextSession;
+    });
+
+    if (typeof window !== 'undefined') {
+      window.location.hash = newTab;
+    }
+  }, []);
+
+  // Reset workflow session back to clean initial state
+  const handleResetWorkflow = useCallback(() => {
+    const cleanSession = clearWorkflowSession();
+    setSession({
+      ...cleanSession,
+      activeTab: cleanSession.currentStage
+    });
+    if (typeof window !== 'undefined') {
+      window.location.hash = 'discover';
+    }
+  }, []);
+
+  // Browser navigation (back / forward buttons) support via hashchange
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hashTab = window.location.hash.replace('#', '') as AppTab;
+      if (VALID_TABS.includes(hashTab) && hashTab !== session.currentStage) {
+        setSession((prev) => {
+          const next: WorkflowSession = { 
+            ...prev, 
+            currentStage: hashTab,
+            activeTab: hashTab, 
+            lastSaved: Date.now(),
+            lastUpdated: Date.now() 
+          };
+          saveWorkflowSession(next);
+          return next;
+        });
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [session.currentStage]);
+
+  // Check Whop connection on initial load
   useEffect(() => {
     fetch('/api/integrations/status')
       .then((res) => res.json())
@@ -33,95 +126,210 @@ export function App() {
 
   // Step 1: Discover -> Find Creators
   const handleSelectForCreators = (signal: DemandSignal) => {
-    setSelectedDemandSignal(signal);
-    setActiveTab('creators');
+    updateSession({
+      selectedDemandSignal: signal,
+      currentStage: 'creators',
+      activeTab: 'creators',
+      previousStage: 'discover',
+      creatorNicheFilter: signal.niche,
+    });
+    if (typeof window !== 'undefined') window.location.hash = 'creators';
   };
 
   // Step 1: Discover -> Direct Product Studio
   const handleSelectForProduct = (signal: DemandSignal) => {
-    setSelectedDemandSignal(signal);
-    setActiveTab('product');
+    updateSession({
+      selectedDemandSignal: signal,
+      currentStage: 'product',
+      activeTab: 'product',
+      previousStage: 'discover',
+      productStudioData: {
+        ...session.productStudioData,
+        viralProblem: signal.viralProblem,
+        niche: signal.niche,
+        pricePoint: signal.suggestedPrice || session.productStudioData.pricePoint,
+      },
+    });
+    if (typeof window !== 'undefined') window.location.hash = 'product';
   };
 
   // Step 2: Creator Scout -> Product Studio
   const handleSelectCreatorForProduct = (creator: CreatorProfile) => {
-    setSelectedCreator(creator);
-    setActiveTab('product');
+    updateSession({
+      selectedCreator: creator,
+      currentStage: 'product',
+      activeTab: 'product',
+      previousStage: 'creators',
+      productStudioData: {
+        ...session.productStudioData,
+        creatorName: creator.name,
+        creatorHandle: creator.handle,
+        niche: creator.niche,
+        viralProblem: session.selectedDemandSignal?.viralProblem || session.productStudioData.viralProblem,
+      },
+    });
+    if (typeof window !== 'undefined') window.location.hash = 'product';
   };
 
   // Step 3: Product Studio -> Whop Pricing & Store
   const handleProceedToWhop = (blueprint: GeneratedProductBlueprint) => {
-    setGeneratedBlueprint(blueprint);
-    setActiveTab('pricing');
+    updateSession({
+      generatedBlueprint: blueprint,
+      currentStage: 'pricing',
+      activeTab: 'pricing',
+      previousStage: 'product',
+      whopPricingData: {
+        ...session.whopPricingData,
+        basePrice: blueprint.pricePoint,
+        bumpPrice: blueprint.orderBumpPrice || session.whopPricingData.bumpPrice,
+      },
+    });
+    if (typeof window !== 'undefined') window.location.hash = 'pricing';
   };
 
   // Step 4: Whop Pricing -> Pitch & Outreach
   const handleProceedToPitch = (whopData: { checkoutUrl: string; productTitle: string; price: number }) => {
-    setCheckoutUrl(whopData.checkoutUrl);
-    setActiveTab('outreach');
+    updateSession({
+      checkoutUrl: whopData.checkoutUrl,
+      currentStage: 'outreach',
+      activeTab: 'outreach',
+      previousStage: 'pricing',
+      whopPricingData: {
+        ...session.whopPricingData,
+        checkoutUrl: whopData.checkoutUrl,
+        basePrice: whopData.price,
+      },
+    });
+    if (typeof window !== 'undefined') window.location.hash = 'outreach';
   };
 
   // Step 5: Outreach -> Partner Delivery & Scaling
   const handleProceedToDelivery = () => {
-    setActiveTab('delivery');
+    updateSession({
+      currentStage: 'delivery',
+      activeTab: 'delivery',
+      previousStage: 'outreach',
+    });
+    if (typeof window !== 'undefined') window.location.hash = 'delivery';
   };
+
+  const activeStage = session.currentStage || session.activeTab || 'discover';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
       {/* Sleek Header Navigation */}
       <Header 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
+        activeTab={activeStage} 
+        setActiveTab={handleTabChange} 
         whopLiveConnected={whopLiveConnected} 
       />
 
       {/* Main Content View Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8">
-        {activeTab === 'discover' && (
+        {/* Step-by-Step Workflow Navigation & Session Status Bar */}
+        <WorkflowStepperBar
+          currentStage={activeStage}
+          session={session}
+          onNavigateStage={handleTabChange}
+          onResetWorkflow={handleResetWorkflow}
+        />
+
+        {/* Step 1: Demand Discovery */}
+        {activeStage === 'discover' && (
           <DiscoverDemandView
+            savedSignals={session.savedDemandSignals}
+            onSignalsChange={(signals) => updateSession({ savedDemandSignals: signals })}
+            initialSearchQuery={session.discoverSearch}
+            initialCategory={session.discoverCategory}
+            selectedSignalId={session.selectedDemandSignal?.id}
+            onFiltersChange={(query, cat) => updateSession({
+              discoverSearch: query,
+              discoverCategory: cat,
+            })}
             onSelectForCreators={handleSelectForCreators}
             onSelectForProduct={handleSelectForProduct}
           />
         )}
 
-        {activeTab === 'creators' && (
+        {/* Step 2: Creator Scout */}
+        {activeStage === 'creators' && (
           <CreatorScoutView
-            initialDemandSignal={selectedDemandSignal}
+            initialDemandSignal={session.selectedDemandSignal}
+            selectedCreator={session.selectedCreator}
+            savedCreators={session.savedCreators}
+            onCreatorsChange={(creators) => updateSession({ savedCreators: creators })}
+            customCreators={session.customCreators}
+            initialNicheFilter={session.creatorNicheFilter}
+            initialSearchQuery={session.creatorSearch}
+            onAddCustomCreator={(newCreator) => updateSession({
+              customCreators: [newCreator, ...session.customCreators],
+            })}
+            onFiltersChange={(niche, query) => updateSession({
+              creatorNicheFilter: niche,
+              creatorSearch: query,
+            })}
             onSelectCreatorForProduct={handleSelectCreatorForProduct}
+            onBack={() => handleTabChange('discover')}
           />
         )}
 
-        {activeTab === 'product' && (
+        {/* Step 3: Product Studio */}
+        {activeStage === 'product' && (
           <ProductStudioView
-            selectedCreator={selectedCreator}
-            selectedDemandSignal={selectedDemandSignal}
+            selectedCreator={session.selectedCreator}
+            selectedDemandSignal={session.selectedDemandSignal}
+            savedData={session.productStudioData}
+            onUpdateStudioData={(studioData) => updateSession({
+              productStudioData: studioData,
+              generatedBlueprint: studioData.blueprint || session.generatedBlueprint,
+            })}
             onProceedToWhop={handleProceedToWhop}
+            onBackToCreators={() => handleTabChange('creators')}
           />
         )}
 
-        {activeTab === 'pricing' && (
+        {/* Step 4: Whop Pricing & 50/50 Splits */}
+        {activeStage === 'pricing' && (
           <WhopPricingView
-            blueprint={generatedBlueprint}
+            blueprint={session.productStudioData?.blueprint || session.generatedBlueprint || null}
+            savedPricingData={session.whopPricingData}
+            onUpdatePricingData={(pricingData) => updateSession({
+              whopPricingData: pricingData,
+              checkoutUrl: pricingData.checkoutUrl || session.checkoutUrl,
+            })}
             onProceedToPitch={handleProceedToPitch}
-            onOpenSettings={() => setActiveTab('settings')}
+            onOpenSettings={() => handleTabChange('settings')}
+            onBackToStudio={() => handleTabChange('product')}
           />
         )}
 
-        {activeTab === 'outreach' && (
+        {/* Step 5: Creator Pitch & Outreach */}
+        {activeStage === 'outreach' && (
           <OutreachPitchView
-            selectedCreator={selectedCreator}
-            blueprint={generatedBlueprint}
-            checkoutUrl={checkoutUrl}
+            selectedCreator={session.selectedCreator}
+            blueprint={session.productStudioData?.blueprint || session.generatedBlueprint}
+            checkoutUrl={session.whopPricingData?.checkoutUrl || session.checkoutUrl}
+            savedOutreachData={session.outreachData}
+            onUpdateOutreachData={(outreachData) => updateSession({ outreachData })}
             onProceedToDelivery={handleProceedToDelivery}
+            onBackToWhop={() => handleTabChange('pricing')}
           />
         )}
 
-        {activeTab === 'delivery' && (
-          <PartnerDeliveryView />
+        {/* Step 6: Partner Distribution & Delivery */}
+        {activeStage === 'delivery' && (
+          <PartnerDeliveryView
+            savedDeliveryData={session.deliveryData}
+            onUpdateDeliveryData={(deliveryData) => updateSession({ deliveryData })}
+            onBackToOutreach={() => handleTabChange('outreach')}
+          />
         )}
 
-        {activeTab === 'settings' && (
-          <WhopSupabaseIntegrationView />
+        {/* Platform Settings & Integration Hub */}
+        {activeStage === 'settings' && (
+          <WhopSupabaseIntegrationView
+            onBack={() => handleTabChange(session.previousStage || 'discover')}
+          />
         )}
       </main>
 

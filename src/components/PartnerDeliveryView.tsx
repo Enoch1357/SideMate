@@ -14,52 +14,93 @@ import {
   Zap
 } from 'lucide-react';
 
-export const PartnerDeliveryView: React.FC = () => {
-  const [salesEvents, setSalesEvents] = useState([
-    {
-      id: 'whop_evt_9281',
-      timestamp: '10:14 AM',
-      customerEmail: 'sarah.miller@gmail.com',
-      productTitle: 'The 7-Night Sleep Reset Protocol',
-      creatorHandle: '@dr.toddler_wellness',
-      grossAmount: 44.00,
-      orderBump: true,
-      whopFee: 1.32,
-      creatorPayout: 21.34,
-      operatorPayout: 21.34,
-      deliveryStatus: 'Whop Hub Unlocked',
-    },
-    {
-      id: 'whop_evt_8832',
-      timestamp: '09:42 AM',
-      customerEmail: 'joshua.k@outlook.com',
-      productTitle: 'The 10-Minute Desk Posture System',
-      creatorHandle: '@deskbound_rehab',
-      grossAmount: 29.00,
-      orderBump: false,
-      whopFee: 0.87,
-      creatorPayout: 14.06,
-      operatorPayout: 14.06,
-      deliveryStatus: 'Whop Hub Unlocked',
-    },
-    {
-      id: 'whop_evt_7914',
-      timestamp: 'Yesterday',
-      customerEmail: 'claire.w@icloud.com',
-      productTitle: 'The 7-Night Sleep Reset Protocol',
-      creatorHandle: '@dr.toddler_wellness',
-      grossAmount: 27.00,
-      orderBump: false,
-      whopFee: 0.81,
-      creatorPayout: 13.09,
-      operatorPayout: 13.09,
-      deliveryStatus: 'Whop Hub Unlocked',
-    },
-  ]);
+interface PartnerDeliveryViewProps {
+  savedDeliveryData?: {
+    salesEvents: any[];
+    partnerCount: number;
+    dailySalesPerPartner: number;
+  };
+  onUpdateDeliveryData?: (data: {
+    salesEvents: any[];
+    partnerCount: number;
+    dailySalesPerPartner: number;
+  }) => void;
+  onBackToOutreach?: () => void;
+}
+
+export const PartnerDeliveryView: React.FC<PartnerDeliveryViewProps> = ({
+  savedDeliveryData,
+  onUpdateDeliveryData,
+  onBackToOutreach,
+}) => {
+  const [salesEvents, setSalesEvents] = useState(
+    savedDeliveryData?.salesEvents && savedDeliveryData.salesEvents.length > 0
+      ? savedDeliveryData.salesEvents
+      : [
+          {
+            id: 'whop_evt_9281',
+            timestamp: '10:14 AM',
+            customerEmail: 'sarah.miller@gmail.com',
+            productTitle: 'The 7-Night Sleep Reset Protocol',
+            creatorHandle: '@dr.toddler_wellness',
+            grossAmount: 44.00,
+            orderBump: true,
+            whopFee: 1.32,
+            creatorPayout: 21.34,
+            operatorPayout: 21.34,
+            deliveryStatus: 'Whop Hub Unlocked',
+          },
+          {
+            id: 'whop_evt_8832',
+            timestamp: '09:42 AM',
+            customerEmail: 'joshua.k@outlook.com',
+            productTitle: 'The 10-Minute Desk Posture System',
+            creatorHandle: '@deskbound_rehab',
+            grossAmount: 29.00,
+            orderBump: false,
+            whopFee: 0.87,
+            creatorPayout: 14.06,
+            operatorPayout: 14.06,
+            deliveryStatus: 'Whop Hub Unlocked',
+          },
+          {
+            id: 'whop_evt_7914',
+            timestamp: 'Yesterday',
+            customerEmail: 'claire.w@icloud.com',
+            productTitle: 'The 7-Night Sleep Reset Protocol',
+            creatorHandle: '@dr.toddler_wellness',
+            grossAmount: 27.00,
+            orderBump: false,
+            whopFee: 0.81,
+            creatorPayout: 13.09,
+            operatorPayout: 13.09,
+            deliveryStatus: 'Whop Hub Unlocked',
+          },
+        ]
+  );
 
   const [simulating, setSimulating] = useState(false);
-  const [partnerCount, setPartnerCount] = useState<number>(3);
-  const [dailySalesPerPartner, setDailySalesPerPartner] = useState<number>(2);
+  const [partnerCount, setPartnerCount] = useState<number>(
+    savedDeliveryData?.partnerCount ?? 3
+  );
+  const [dailySalesPerPartner, setDailySalesPerPartner] = useState<number>(
+    savedDeliveryData?.dailySalesPerPartner ?? 2
+  );
+
+  const syncDelivery = (overrides?: Partial<{
+    salesEvents: any[];
+    partnerCount: number;
+    dailySalesPerPartner: number;
+  }>) => {
+    if (!onUpdateDeliveryData) return;
+    onUpdateDeliveryData({
+      salesEvents,
+      partnerCount,
+      dailySalesPerPartner,
+      ...overrides,
+    });
+  };
+
   const avgOrderValue = 34; // with ~35% order bump uptake
   const netPerSale = avgOrderValue * 0.97 * 0.5; // ~16.49 per sale to you
 
@@ -100,7 +141,9 @@ export const PartnerDeliveryView: React.FC = () => {
           operatorPayout: data.saleEvent.operatorPayout,
           deliveryStatus: 'Whop Hub Unlocked',
         };
-        setSalesEvents([newEvt, ...salesEvents]);
+        const updated = [newEvt, ...salesEvents];
+        setSalesEvents(updated);
+        syncDelivery({ salesEvents: updated });
       }
     } catch (err) {
       console.error('Failed to simulate sale:', err);
@@ -109,15 +152,35 @@ export const PartnerDeliveryView: React.FC = () => {
     }
   };
 
+  const handlePartnerCountChange = (val: number) => {
+    setPartnerCount(val);
+    syncDelivery({ partnerCount: val });
+  };
+
+  const handleDailySalesChange = (val: number) => {
+    setDailySalesPerPartner(val);
+    syncDelivery({ dailySalesPerPartner: val });
+  };
+
   return (
     <div className="space-y-6 pb-16">
       {/* Banner */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-blue-950/30 border border-slate-800 p-6 sm:p-7 shadow-sm">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-semibold mb-2.5">
-              <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
-              <span>Step 6: Partner Distribution, Delivery &amp; Scaling Hub</span>
+            <div className="flex items-center gap-2 flex-wrap mb-2.5">
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-300 text-xs font-semibold">
+                <BarChart3 className="w-3.5 h-3.5 text-blue-400" />
+                <span>Step 6: Partner Distribution, Delivery &amp; Scaling Hub</span>
+              </div>
+              {onBackToOutreach && (
+                <button
+                  onClick={onBackToOutreach}
+                  className="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 transition-colors cursor-pointer"
+                >
+                  ← Back to Pitch &amp; Outreach
+                </button>
+              )}
             </div>
             <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
               Monitor Whop Delivery &amp; Scale Partners
@@ -191,7 +254,7 @@ export const PartnerDeliveryView: React.FC = () => {
                 min="1"
                 max="15"
                 value={partnerCount}
-                onChange={(e) => setPartnerCount(Number(e.target.value))}
+                onChange={(e) => handlePartnerCountChange(Number(e.target.value))}
                 className="w-full accent-indigo-500"
               />
               <div className="flex justify-between text-[10px] text-slate-500 font-mono">
@@ -211,7 +274,7 @@ export const PartnerDeliveryView: React.FC = () => {
                 min="1"
                 max="10"
                 value={dailySalesPerPartner}
-                onChange={(e) => setDailySalesPerPartner(Number(e.target.value))}
+                onChange={(e) => handleDailySalesChange(Number(e.target.value))}
                 className="w-full accent-teal-500"
               />
               <div className="flex justify-between text-[10px] text-slate-500 font-mono">
@@ -268,7 +331,7 @@ export const PartnerDeliveryView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/60">
-              {salesEvents.map((evt) => (
+              {(salesEvents || []).map((evt) => (
                 <tr key={evt.id} className="hover:bg-slate-800/30 transition-colors">
                   <td className="py-3 text-slate-400 font-mono text-[11px]">{evt.timestamp}</td>
                   <td className="py-3 text-white font-medium">{evt.customerEmail}</td>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Sparkles, 
   FileText, 
@@ -46,38 +46,197 @@ export interface GeneratedProductBlueprint {
   engineUsed?: string;
 }
 
+export const normalizeBlueprint = (
+  raw: any,
+  defaults?: { creatorName?: string; creatorHandle?: string; productFormat?: string; pricePoint?: number }
+): GeneratedProductBlueprint | null => {
+  if (!raw || typeof raw !== 'object') return null;
+
+  let pillars: GeneratedCurriculumPillar[] = [];
+  if (Array.isArray(raw.pillars) && raw.pillars.length > 0) {
+    pillars = raw.pillars.map((p: any, idx: number) => ({
+      pillarNumber: p.pillarNumber || idx + 1,
+      title: p.title || `Pillar 0${idx + 1}`,
+      objective: p.objective || 'Immediate core transformation',
+      keyActionItem: p.keyActionItem || 'Execute daily non-negotiable step',
+      fullContentMarkdown: p.fullContentMarkdown || p.summary || '',
+    }));
+  } else if (Array.isArray(raw.curatedModules) && raw.curatedModules.length > 0) {
+    pillars = raw.curatedModules.map((m: any, idx: number) => ({
+      pillarNumber: m.pillarNumber || m.moduleNumber || idx + 1,
+      title: m.title || `Pillar 0${idx + 1}`,
+      objective: m.objective || m.summary || 'Immediate core transformation',
+      keyActionItem: m.keyActionItem || (Array.isArray(m.deliverables) && m.deliverables[0]) || 'Execute daily non-negotiable step',
+      fullContentMarkdown: m.fullContentMarkdown || m.summary || '',
+    }));
+  }
+
+  if (pillars.length === 0) {
+    pillars = [
+      {
+        pillarNumber: 1,
+        title: 'Core Diagnosis & Root Cause',
+        objective: 'Identify key constraints and eliminate hidden friction triggers',
+        keyActionItem: 'Complete the 3-minute baseline audit',
+        fullContentMarkdown: 'Audit baseline habits and isolate root triggers before beginning the daily protocol.',
+      },
+      {
+        pillarNumber: 2,
+        title: 'The Core Execution Protocol',
+        objective: 'Execute high-impact daily routine with zero decision fatigue',
+        keyActionItem: 'Lock in morning and evening sequence non-negotiables',
+        fullContentMarkdown: 'Step-by-step phased execution plan designed for rapid, noticeable transformation.',
+      },
+      {
+        pillarNumber: 3,
+        title: '1-Page Daily Action Checklist',
+        objective: 'Eliminate overthinking with single-sheet compliance tracker',
+        keyActionItem: 'Check off morning non-negotiables before 10:00 AM',
+        fullContentMarkdown: 'Keep this 1-page tracker sheet on your refrigerator or lockscreen to maintain daily compliance.',
+      },
+      {
+        pillarNumber: 4,
+        title: 'Emergency Troubleshooting & FAQs',
+        objective: 'Navigate disruptions and schedule edge cases without falling off',
+        keyActionItem: 'Use 2-minute reset drill during high-stress disruptions',
+        fullContentMarkdown: 'Direct answers to top audience objections and emergency protocols for travel and schedule shifts.',
+      },
+    ];
+  }
+
+  const printableChecklist = Array.isArray(raw.printableChecklist) && raw.printableChecklist.length > 0
+    ? raw.printableChecklist
+    : [
+        'Complete 3-minute diagnostic assessment',
+        'Execute morning non-negotiable sequence',
+        'Midday consistency and hydration check',
+        'Evening wind-down routine',
+        'Record completion in 1-page action tracker',
+      ];
+
+  const creatorName = raw.creatorAttribution || raw.creatorName || defaults?.creatorName || 'Partner Creator';
+  const formatType = raw.formatType || raw.productType || defaults?.productFormat || 'Actionable PDF Guide';
+  const pricePoint = Number(raw.pricePoint ?? raw.suggestedPricePoint ?? defaults?.pricePoint ?? 27);
+
+  return {
+    productTitle: raw.productTitle || 'The Actionable Reset Protocol',
+    subtitle: raw.subtitle || 'A 14-Day Structured System for Rapid Transformation',
+    creatorAttribution: creatorName,
+    formatType,
+    pricePoint,
+    orderBumpTitle: raw.orderBumpTitle || 'Audio Walkthrough & Notion Dashboard',
+    orderBumpPrice: Number(raw.orderBumpPrice ?? 17),
+    pillars,
+    printableChecklist,
+    faqItems: Array.isArray(raw.faqItems) ? raw.faqItems : [],
+    marketingHook: raw.marketingHook || '',
+    personalizedOutreachPitch: raw.personalizedOutreachPitch || '',
+    whopConfig: raw.whopConfig || null,
+    engineUsed: raw.engineUsed,
+  };
+};
+
 interface ProductStudioViewProps {
   selectedCreator?: CreatorProfile | null;
   selectedDemandSignal?: DemandSignal | null;
+  savedData?: {
+    creatorName: string;
+    creatorHandle: string;
+    niche: string;
+    viralProblem: string;
+    productFormat: string;
+    pricePoint: number;
+    blueprint: GeneratedProductBlueprint | null;
+    activePillarIndex: number;
+  };
+  onUpdateStudioData?: (data: {
+    creatorName: string;
+    creatorHandle: string;
+    niche: string;
+    viralProblem: string;
+    productFormat: string;
+    pricePoint: number;
+    blueprint: GeneratedProductBlueprint | null;
+    activePillarIndex: number;
+  }) => void;
   onProceedToWhop: (blueprint: GeneratedProductBlueprint) => void;
+  onBackToCreators?: () => void;
 }
 
 export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
   selectedCreator,
   selectedDemandSignal,
+  savedData,
+  onUpdateStudioData,
   onProceedToWhop,
+  onBackToCreators,
 }) => {
-  // Inputs
-  const [creatorName, setCreatorName] = useState(selectedCreator?.name || 'Dr. Elena Miller, MD');
-  const [creatorHandle, setCreatorHandle] = useState(selectedCreator?.handle || '@dr.toddler_wellness');
-  const [niche, setNiche] = useState(selectedCreator?.niche || selectedDemandSignal?.niche || 'Parenting & Toddler Health');
+  // Inputs with robust fallback hierarchy (savedData -> selectedCreator -> selectedDemandSignal -> defaults)
+  const [creatorName, setCreatorName] = useState(
+    savedData?.creatorName || selectedCreator?.name || 'Dr. Elena Miller, MD'
+  );
+  const [creatorHandle, setCreatorHandle] = useState(
+    savedData?.creatorHandle || selectedCreator?.handle || '@dr.toddler_wellness'
+  );
+  const [niche, setNiche] = useState(
+    savedData?.niche || selectedCreator?.niche || selectedDemandSignal?.niche || 'Parenting & Toddler Health'
+  );
   const [viralProblem, setViralProblem] = useState(
+    savedData?.viralProblem ||
     selectedCreator?.audiencePain || 
     selectedDemandSignal?.viralProblem || 
     'Toddler 2-year sleep regression and frequent 3 AM night waking'
   );
   const [productFormat, setProductFormat] = useState<string>(
+    savedData?.productFormat ||
     selectedCreator?.recommendedFormat || selectedDemandSignal?.recommendedFormat || 'Actionable PDF Guide'
   );
   const [pricePoint, setPricePoint] = useState<number>(
+    savedData?.pricePoint ||
     selectedCreator?.suggestedPrice || selectedDemandSignal?.suggestedPrice || 27
   );
 
   // Studio State
   const [isGenerating, setIsGenerating] = useState(false);
-  const [blueprint, setBlueprint] = useState<GeneratedProductBlueprint | null>(null);
-  const [activePillarIndex, setActivePillarIndex] = useState<number>(0);
+  const [blueprint, setBlueprint] = useState<GeneratedProductBlueprint | null>(() => 
+    savedData?.blueprint ? normalizeBlueprint(savedData.blueprint, { creatorName, creatorHandle, productFormat, pricePoint }) : null
+  );
+  const [activePillarIndex, setActivePillarIndex] = useState<number>(
+    savedData?.activePillarIndex || 0
+  );
   const [copiedText, setCopiedText] = useState(false);
+
+  // Sync blueprint if savedData changes in session
+  useEffect(() => {
+    if (savedData?.blueprint) {
+      setBlueprint(normalizeBlueprint(savedData.blueprint, { creatorName, creatorHandle, productFormat, pricePoint }));
+    }
+  }, [savedData?.blueprint]);
+
+  // Sync to workflow session whenever studio state changes
+  const notifyUpdate = (overrides?: Partial<{
+    creatorName: string;
+    creatorHandle: string;
+    niche: string;
+    viralProblem: string;
+    productFormat: string;
+    pricePoint: number;
+    blueprint: GeneratedProductBlueprint | null;
+    activePillarIndex: number;
+  }>) => {
+    if (!onUpdateStudioData) return;
+    onUpdateStudioData({
+      creatorName,
+      creatorHandle,
+      niche,
+      viralProblem,
+      productFormat,
+      pricePoint,
+      blueprint,
+      activePillarIndex,
+      ...overrides,
+    });
+  };
 
   const formats = [
     { id: 'Actionable PDF Guide', label: 'Actionable PDF Guide', icon: FileText, desc: 'Step-by-step 20-page protocol' },
@@ -103,7 +262,9 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
       });
 
       const data = await res.json();
-      setBlueprint(data);
+      const normalized = normalizeBlueprint(data, { creatorName, creatorHandle, productFormat, pricePoint });
+      setBlueprint(normalized);
+      notifyUpdate({ blueprint: normalized });
     } catch (err) {
       console.error('Failed to generate product blueprint:', err);
     } finally {
@@ -115,11 +276,11 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
     if (!blueprint) return;
     let fullDoc = `# ${blueprint.productTitle}\n## ${blueprint.subtitle}\nBy ${blueprint.creatorAttribution}\n\n`;
     fullDoc += `### Target Audience Hook\n${blueprint.marketingHook}\n\n---\n\n`;
-    blueprint.pillars.forEach((p) => {
+    (blueprint.pillars || []).forEach((p) => {
       fullDoc += `## Pillar ${p.pillarNumber}: ${p.title}\n*Objective:* ${p.objective}\n*Action Item:* ${p.keyActionItem}\n\n${p.fullContentMarkdown}\n\n---\n\n`;
     });
     fullDoc += `## Printable Checklist\n`;
-    blueprint.printableChecklist.forEach((c) => {
+    (blueprint.printableChecklist || []).forEach((c) => {
       fullDoc += `- [ ] ${c}\n`;
     });
     navigator.clipboard.writeText(fullDoc);
@@ -131,6 +292,9 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
     if (!blueprint) return;
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
+    const pillarsList = blueprint.pillars || [];
+    const checklistList = blueprint.printableChecklist || [];
+
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
@@ -152,7 +316,7 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
           <div class="subtitle">${blueprint.subtitle}</div>
           <div class="author">Created in collaboration with ${blueprint.creatorAttribution}</div>
           
-          ${blueprint.pillars.map(p => `
+          ${pillarsList.map(p => `
             <div class="pillar">
               <h2>Pillar ${p.pillarNumber}: ${p.title}</h2>
               <p><strong>Key Action Item:</strong> ${p.keyActionItem}</p>
@@ -163,7 +327,7 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
           <div class="checklist">
             <h2>Daily Implementation Checklist</h2>
             <ul>
-              ${blueprint.printableChecklist.map(item => `<li>[ ] ${item}</li>`).join('')}
+              ${checklistList.map(item => `<li>[ ] ${item}</li>`).join('')}
             </ul>
           </div>
         </body>
@@ -180,9 +344,19 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
     <div className="space-y-6 pb-16">
       {/* Banner */}
       <div className="rounded-2xl bg-gradient-to-br from-slate-900 via-slate-900/90 to-indigo-950/40 border border-slate-800 p-6 sm:p-7 shadow-sm">
-        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-2.5">
-          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Step 3: AI Product Studio &amp; Curriculum Builder</span>
+        <div className="flex items-center gap-2 flex-wrap mb-2.5">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Step 3: AI Product Studio &amp; Curriculum Builder</span>
+          </div>
+          {onBackToCreators && (
+            <button
+              onClick={onBackToCreators}
+              className="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 transition-colors cursor-pointer"
+            >
+              ← Back to Creators
+            </button>
+          )}
         </div>
         <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
           Create Personalized Digital Products
@@ -403,7 +577,7 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
                   <span className="text-[10px] text-slate-500">Click to inspect lessons</span>
                 </h4>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                  {blueprint.pillars.map((pillar, idx) => (
+                  {(blueprint.pillars || []).map((pillar, idx) => (
                     <button
                       key={idx}
                       onClick={() => setActivePillarIndex(idx)}
@@ -424,7 +598,7 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
                 </div>
 
                 {/* Active Pillar Details Card */}
-                {blueprint.pillars[activePillarIndex] && (
+                {blueprint.pillars && blueprint.pillars[activePillarIndex] && (
                   <div className="p-4 rounded-xl bg-slate-950 border border-slate-800/80 space-y-3">
                     <div className="flex items-center justify-between">
                       <h5 className="font-bold text-sm text-white">
@@ -454,11 +628,11 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
                     <span>Printable 1-Page Checklist / Routine Sheet</span>
                   </h4>
                   <span className="text-[10px] text-slate-500 font-mono">
-                    {blueprint.printableChecklist.length} action items
+                    {(blueprint.printableChecklist || []).length} action items
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-300">
-                  {blueprint.printableChecklist.map((item, idx) => (
+                  {(blueprint.printableChecklist || []).map((item, idx) => (
                     <div key={idx} className="flex items-center gap-2 p-2 rounded-lg bg-slate-900/60 border border-slate-800/60">
                       <input type="checkbox" className="rounded accent-teal-500 w-3.5 h-3.5" defaultChecked={idx === 0} />
                       <span className="leading-snug">{item}</span>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   TrendingUp, 
   Search, 
@@ -29,18 +29,30 @@ export interface DemandSignal {
 }
 
 interface DiscoverDemandViewProps {
+  savedSignals?: DemandSignal[];
+  onSignalsChange?: (signals: DemandSignal[]) => void;
+  initialSearchQuery?: string;
+  initialCategory?: string;
+  selectedSignalId?: string | null;
+  onFiltersChange?: (query: string, category: string) => void;
   onSelectForCreators: (signal: DemandSignal) => void;
   onSelectForProduct: (signal: DemandSignal) => void;
 }
 
 export const DiscoverDemandView: React.FC<DiscoverDemandViewProps> = ({
+  savedSignals,
+  onSignalsChange,
+  initialSearchQuery = '',
+  initialCategory = 'all',
+  selectedSignalId,
+  onFiltersChange,
   onSelectForCreators,
   onSelectForProduct,
 }) => {
-  const [signals, setSignals] = useState<DemandSignal[]>([]);
+  const [signals, setSignals] = useState<DemandSignal[]>(() => (savedSignals && savedSignals.length > 0 ? savedSignals : []));
   const [loading, setLoading] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [activeCategory, setActiveCategory] = useState<string>(initialCategory);
 
   const categories = [
     { id: 'all', label: 'All Opportunities' },
@@ -52,6 +64,13 @@ export const DiscoverDemandView: React.FC<DiscoverDemandViewProps> = ({
     { id: 'fitness', label: 'Nutrition & Meal Prep' },
   ];
 
+  // Whenever savedSignals prop is updated in session, re-render from savedSignals in exact order
+  useEffect(() => {
+    if (savedSignals && savedSignals.length > 0) {
+      setSignals(savedSignals);
+    }
+  }, [savedSignals]);
+
   const fetchSignals = async (query?: string, category?: string) => {
     setLoading(true);
     try {
@@ -62,7 +81,9 @@ export const DiscoverDemandView: React.FC<DiscoverDemandViewProps> = ({
           body: JSON.stringify({ customQuery: query.trim() }),
         });
         const data = await res.json();
-        setSignals(data.signals || []);
+        const list = data.signals || [];
+        setSignals(list);
+        onSignalsChange?.(list);
       } else {
         const filterNiche = category && category !== 'all' ? category : '';
         const url = filterNiche 
@@ -70,7 +91,9 @@ export const DiscoverDemandView: React.FC<DiscoverDemandViewProps> = ({
           : '/api/demand-signals';
         const res = await fetch(url);
         const data = await res.json();
-        setSignals(data.signals || []);
+        const list = data.signals || [];
+        setSignals(list);
+        onSignalsChange?.(list);
       }
     } catch (err) {
       console.error('Failed to fetch demand signals:', err);
@@ -79,12 +102,28 @@ export const DiscoverDemandView: React.FC<DiscoverDemandViewProps> = ({
     }
   };
 
+  // Only auto-fetch default market signals on initial empty session boot if no saved signals exist
   useEffect(() => {
-    fetchSignals(undefined, activeCategory);
-  }, [activeCategory]);
+    if (!savedSignals || savedSignals.length === 0) {
+      if (searchQuery.trim()) {
+        fetchSignals(searchQuery.trim());
+      } else {
+        fetchSignals(undefined, activeCategory);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSelectCategory = (catId: string) => {
+    setActiveCategory(catId);
+    setSearchQuery('');
+    onFiltersChange?.('', catId);
+    fetchSignals(undefined, catId);
+  };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    onFiltersChange?.(searchQuery, activeCategory);
     if (searchQuery.trim()) {
       fetchSignals(searchQuery.trim());
     } else {
@@ -140,10 +179,7 @@ export const DiscoverDemandView: React.FC<DiscoverDemandViewProps> = ({
           {categories.map((cat) => (
             <button
               key={cat.id}
-              onClick={() => {
-                setSearchQuery('');
-                setActiveCategory(cat.id);
-              }}
+              onClick={() => handleSelectCategory(cat.id)}
               className={`px-3 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
                 activeCategory === cat.id && !searchQuery
                   ? 'bg-indigo-600 text-white shadow-sm'
@@ -158,13 +194,27 @@ export const DiscoverDemandView: React.FC<DiscoverDemandViewProps> = ({
 
       {/* Demand Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {signals.map((signal) => (
-          <div
-            key={signal.id}
-            className="rounded-xl bg-slate-900/80 border border-slate-800/90 hover:border-slate-700/80 p-5 flex flex-col justify-between transition-all duration-200 group hover:shadow-lg hover:shadow-indigo-950/20"
-          >
-            <div className="space-y-3.5">
-              {/* Top metadata tags */}
+        {(signals || []).map((signal) => {
+          const isSelected = selectedSignalId === signal.id;
+          return (
+            <div
+              key={signal.id}
+              className={`rounded-xl bg-slate-900/80 border p-5 flex flex-col justify-between transition-all duration-200 group hover:shadow-lg ${
+                isSelected
+                  ? 'border-indigo-500 ring-2 ring-indigo-500/30 shadow-indigo-950/40 bg-indigo-950/20'
+                  : 'border-slate-800/90 hover:border-slate-700/80 hover:shadow-indigo-950/20'
+              }`}
+            >
+              <div className="space-y-3.5">
+                {/* Selected in current workflow banner */}
+                {isSelected && (
+                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 text-[10px] font-bold border border-indigo-500/30">
+                    <Sparkles className="w-3 h-3 text-amber-300" />
+                    <span>Active In Current Workflow</span>
+                  </div>
+                )}
+
+                {/* Top metadata tags */}
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-semibold text-indigo-400 bg-indigo-950/60 px-2.5 py-0.5 rounded-md border border-indigo-800/50">
                   {signal.niche}
@@ -250,7 +300,8 @@ export const DiscoverDemandView: React.FC<DiscoverDemandViewProps> = ({
               </button>
             </div>
           </div>
-        ))}
+        );
+      })}
       </div>
     </div>
   );
