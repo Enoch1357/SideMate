@@ -1,6 +1,7 @@
 import { DemandSignal } from '../components/DiscoverDemandView';
 import { CreatorProfile } from '../components/CreatorScoutView';
 import { GeneratedProductBlueprint } from '../components/ProductStudioView';
+import type { ProductFormat } from '../types';
 import { AppTab } from '../components/Header';
 
 export interface WorkflowSession {
@@ -30,6 +31,7 @@ export interface WorkflowSession {
     niche: string;
     viralProblem: string;
     productFormat: string;
+    includedFormats?: ProductFormat[];
     pricePoint: number;
     blueprint: GeneratedProductBlueprint | null;
     activePillarIndex: number;
@@ -112,6 +114,7 @@ export const DEFAULT_WORKFLOW_SESSION: WorkflowSession = {
     niche: '',
     viralProblem: '',
     productFormat: 'Actionable PDF Guide',
+    includedFormats: [],
     pricePoint: 27,
     blueprint: null,
     activePillarIndex: 0,
