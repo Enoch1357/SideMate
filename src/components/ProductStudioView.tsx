@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Sparkles, 
   FileText, 
@@ -10,16 +10,23 @@ import {
   Check, 
   ArrowRight, 
   RefreshCw, 
-  DollarSign, 
-  Eye, 
-  ExternalLink,
-  ShieldCheck,
-  ChevronDown,
-  ChevronUp,
-  Tag
+  Headphones,
+  Palette,
+  GraduationCap,
+  Loader2,
 } from 'lucide-react';
 import { CreatorProfile } from './CreatorScoutView';
 import { DemandSignal } from './DiscoverDemandView';
+import type {
+  ProductFormat,
+  ProductResource,
+  PrintableChecklist,
+  BlueprintCoverDesign,
+  BlueprintOrderBump,
+  ExpertSource,
+  NotionTemplate,
+  AudioWalkthrough,
+} from '../types';
 
 export interface GeneratedCurriculumPillar {
   pillarNumber: number;
@@ -27,6 +34,8 @@ export interface GeneratedCurriculumPillar {
   objective: string;
   keyActionItem: string;
   fullContentMarkdown: string;
+  illustrationPrompt?: string;
+  resources?: ProductResource[];
 }
 
 export interface GeneratedProductBlueprint {
@@ -38,13 +47,48 @@ export interface GeneratedProductBlueprint {
   orderBumpTitle: string;
   orderBumpPrice: number;
   pillars: GeneratedCurriculumPillar[];
+  /** Flattened checklist items for the legacy checklist UI. */
   printableChecklist: string[];
   faqItems: { question: string; answer: string }[];
   marketingHook: string;
   personalizedOutreachPitch: string;
   whopConfig?: any;
   engineUsed?: string;
+
+  // ---- Enhanced (Stage 3) fields, carried through for rich preview + PDF ----
+  productSubtitle?: string;
+  tagline?: string;
+  targetAudience?: string;
+  coreProblemSolved?: string;
+  primaryFormat?: ProductFormat;
+  includedFormats?: ProductFormat[];
+  price?: number;
+  coverDesign?: BlueprintCoverDesign;
+  printableChecklistData?: PrintableChecklist;
+  notionTemplate?: NotionTemplate;
+  audioWalkthrough?: AudioWalkthrough;
+  orderBump?: BlueprintOrderBump;
+  expertSources?: ExpertSource[];
 }
+
+/** Flatten an enhanced PrintableChecklist (or legacy string[]) into display strings. */
+const flattenChecklist = (raw: any): string[] => {
+  if (Array.isArray(raw?.printableChecklistItems) && raw.printableChecklistItems.length > 0) {
+    return raw.printableChecklistItems.map((x: any) => String(x));
+  }
+  if (Array.isArray(raw?.printableChecklist) && raw.printableChecklist.length > 0) {
+    return raw.printableChecklist.map((x: any) => String(x));
+  }
+  const cl = raw?.printableChecklist || raw?.printableChecklistData;
+  if (cl && Array.isArray(cl.sections)) {
+    const flat: string[] = [];
+    cl.sections.forEach((s: any) =>
+      (s.items || []).forEach((it: any) => flat.push(String(it?.text ?? it)))
+    );
+    if (flat.length > 0) return flat;
+  }
+  return [];
+};
 
 export const normalizeBlueprint = (
   raw: any,
@@ -104,37 +148,104 @@ export const normalizeBlueprint = (
     ];
   }
 
-  const printableChecklist = Array.isArray(raw.printableChecklist) && raw.printableChecklist.length > 0
-    ? raw.printableChecklist
-    : [
-        'Complete 3-minute diagnostic assessment',
-        'Execute morning non-negotiable sequence',
-        'Midday consistency and hydration check',
-        'Evening wind-down routine',
-        'Record completion in 1-page action tracker',
-      ];
+  let printableChecklist = flattenChecklist(raw);
+  if (printableChecklist.length === 0) {
+    printableChecklist = [
+      'Complete 3-minute diagnostic assessment',
+      'Execute morning non-negotiable sequence',
+      'Midday consistency and hydration check',
+      'Evening wind-down routine',
+      'Record completion in 1-page action tracker',
+    ];
+  }
 
   const creatorName = raw.creatorAttribution || raw.creatorName || defaults?.creatorName || 'Partner Creator';
   const formatType = raw.formatType || raw.productType || defaults?.productFormat || 'Actionable PDF Guide';
-  const pricePoint = Number(raw.pricePoint ?? raw.suggestedPricePoint ?? defaults?.pricePoint ?? 27);
+  const pricePoint = Number(raw.pricePoint ?? raw.suggestedPricePoint ?? raw.price ?? defaults?.pricePoint ?? 27);
+
+  // The enhanced checklist object (with sections/fillable fields), if provided.
+  const printableChecklistData: PrintableChecklist | undefined =
+    raw.printableChecklistData ||
+    (raw.printableChecklist && !Array.isArray(raw.printableChecklist) && Array.isArray(raw.printableChecklist.sections)
+      ? raw.printableChecklist
+      : undefined);
 
   return {
     productTitle: raw.productTitle || 'The Actionable Reset Protocol',
-    subtitle: raw.subtitle || 'A 14-Day Structured System for Rapid Transformation',
+    subtitle: raw.subtitle || raw.productSubtitle || 'A 14-Day Structured System for Rapid Transformation',
     creatorAttribution: creatorName,
     formatType,
     pricePoint,
-    orderBumpTitle: raw.orderBumpTitle || 'Audio Walkthrough & Notion Dashboard',
-    orderBumpPrice: Number(raw.orderBumpPrice ?? 17),
+    orderBumpTitle: raw.orderBumpTitle || raw.orderBump?.title || 'Audio Walkthrough & Notion Dashboard',
+    orderBumpPrice: Number(raw.orderBumpPrice ?? raw.orderBump?.price ?? 17),
     pillars,
     printableChecklist,
     faqItems: Array.isArray(raw.faqItems) ? raw.faqItems : [],
-    marketingHook: raw.marketingHook || '',
+    marketingHook: raw.marketingHook || raw.tagline || '',
     personalizedOutreachPitch: raw.personalizedOutreachPitch || '',
     whopConfig: raw.whopConfig || null,
     engineUsed: raw.engineUsed,
+
+    // ---- Enhanced passthrough fields ----
+    productSubtitle: raw.productSubtitle || raw.subtitle,
+    tagline: raw.tagline,
+    targetAudience: raw.targetAudience,
+    coreProblemSolved: raw.coreProblemSolved,
+    primaryFormat: raw.primaryFormat,
+    includedFormats: Array.isArray(raw.includedFormats) ? raw.includedFormats : undefined,
+    price: Number(raw.price ?? pricePoint),
+    coverDesign: raw.coverDesign,
+    printableChecklistData,
+    notionTemplate: raw.notionTemplate,
+    audioWalkthrough: raw.audioWalkthrough,
+    orderBump: raw.orderBump,
+    expertSources: Array.isArray(raw.expertSources) ? raw.expertSources : undefined,
   };
 };
+
+// The five supported product formats, shown as toggle-chips.
+const FORMAT_OPTIONS: Array<{ token: ProductFormat; label: string; icon: any; desc: string }> = [
+  { token: 'pdf_guide', label: 'PDF Guide', icon: FileText, desc: 'Step-by-step actionable protocol' },
+  { token: 'ebook', label: 'Ebook', icon: BookOpen, desc: 'Comprehensive deep-dive curriculum' },
+  { token: 'checklist', label: 'Checklist', icon: CheckSquare, desc: 'Printable quick-reference sheet' },
+  { token: 'notion_template', label: 'Notion Template', icon: Layers, desc: 'Interactive workspace hub' },
+  { token: 'audio_walkthrough', label: 'Audio Walkthrough', icon: Headphones, desc: 'Guided narrated companion' },
+];
+
+const FORMAT_TOKEN_LABELS: Record<ProductFormat, string> = {
+  pdf_guide: 'PDF Guide',
+  ebook: 'Ebook',
+  checklist: 'Printable Checklist',
+  notion_template: 'Notion Template',
+  audio_walkthrough: 'Audio Walkthrough',
+};
+
+// Map legacy display labels (or tokens) to a ProductFormat token.
+function labelToFormatToken(input?: string): ProductFormat {
+  if (!input) return 'pdf_guide';
+  const key = input.trim().toLowerCase();
+  const map: Record<string, ProductFormat> = {
+    'actionable pdf guide': 'pdf_guide',
+    'pdf guide': 'pdf_guide',
+    'pdf': 'pdf_guide',
+    'pdf_guide': 'pdf_guide',
+    'full ebook': 'ebook',
+    'full digital ebook': 'ebook',
+    'ebook': 'ebook',
+    'printable checklist': 'checklist',
+    'printable checklist & routine': 'checklist',
+    'checklist': 'checklist',
+    'interactive notion hub': 'notion_template',
+    'notion digital hub': 'notion_template',
+    'notion template': 'notion_template',
+    'notion_template': 'notion_template',
+    'notion': 'notion_template',
+    'audio walkthrough': 'audio_walkthrough',
+    'audio_walkthrough': 'audio_walkthrough',
+    'audio': 'audio_walkthrough',
+  };
+  return map[key] || 'pdf_guide';
+}
 
 interface ProductStudioViewProps {
   selectedCreator?: CreatorProfile | null;
@@ -145,6 +256,7 @@ interface ProductStudioViewProps {
     niche: string;
     viralProblem: string;
     productFormat: string;
+    includedFormats?: ProductFormat[];
     pricePoint: number;
     blueprint: GeneratedProductBlueprint | null;
     activePillarIndex: number;
@@ -155,6 +267,7 @@ interface ProductStudioViewProps {
     niche: string;
     viralProblem: string;
     productFormat: string;
+    includedFormats?: ProductFormat[];
     pricePoint: number;
     blueprint: GeneratedProductBlueprint | null;
     activePillarIndex: number;
@@ -187,9 +300,16 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
     selectedDemandSignal?.viralProblem || 
     'Toddler 2-year sleep regression and frequent 3 AM night waking'
   );
-  const [productFormat, setProductFormat] = useState<string>(
-    savedData?.productFormat ||
-    selectedCreator?.recommendedFormat || selectedDemandSignal?.recommendedFormat || 'Actionable PDF Guide'
+  const [productFormat, setProductFormat] = useState<ProductFormat>(
+    labelToFormatToken(
+      savedData?.productFormat ||
+      selectedCreator?.recommendedFormat || selectedDemandSignal?.recommendedFormat || 'pdf_guide'
+    )
+  );
+  const [addOnFormats, setAddOnFormats] = useState<ProductFormat[]>(
+    Array.isArray((savedData as any)?.includedFormats)
+      ? ((savedData as any).includedFormats as ProductFormat[]).filter((f) => f !== productFormat)
+      : []
   );
   const [pricePoint, setPricePoint] = useState<number>(
     savedData?.pricePoint ||
@@ -198,6 +318,10 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
 
   // Studio State
   const [isGenerating, setIsGenerating] = useState(false);
+  const [progressStep, setProgressStep] = useState(0);
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+  const progressTimer = useRef<ReturnType<typeof setInterval> | null>(null);
   const [blueprint, setBlueprint] = useState<GeneratedProductBlueprint | null>(() => 
     savedData?.blueprint ? normalizeBlueprint(savedData.blueprint, { creatorName, creatorHandle, productFormat, pricePoint }) : null
   );
@@ -205,6 +329,32 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
     savedData?.activePillarIndex || 0
   );
   const [copiedText, setCopiedText] = useState(false);
+
+  // Step-by-step progress messages while generating
+  const PROGRESS_MESSAGES = [
+    'Synthesizing expert insights...',
+    'Structuring content pillars...',
+    'Building checklist...',
+    'Finalizing blueprint...',
+  ];
+
+  useEffect(() => {
+    if (isGenerating) {
+      setProgressStep(0);
+      progressTimer.current = setInterval(() => {
+        setProgressStep((s) => (s + 1) % PROGRESS_MESSAGES.length);
+      }, 2000);
+    } else if (progressTimer.current) {
+      clearInterval(progressTimer.current);
+      progressTimer.current = null;
+    }
+    return () => {
+      if (progressTimer.current) {
+        clearInterval(progressTimer.current);
+        progressTimer.current = null;
+      }
+    };
+  }, [isGenerating]);
 
   // Sync blueprint if savedData changes in session
   useEffect(() => {
@@ -220,6 +370,7 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
     niche: string;
     viralProblem: string;
     productFormat: string;
+    includedFormats: ProductFormat[];
     pricePoint: number;
     blueprint: GeneratedProductBlueprint | null;
     activePillarIndex: number;
@@ -231,6 +382,7 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
       niche,
       viralProblem,
       productFormat,
+      includedFormats: [productFormat, ...addOnFormats],
       pricePoint,
       blueprint,
       activePillarIndex,
@@ -238,16 +390,18 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
     });
   };
 
-  const formats = [
-    { id: 'Actionable PDF Guide', label: 'Actionable PDF Guide', icon: FileText, desc: 'Step-by-step 20-page protocol' },
-    { id: 'Full Ebook', label: 'Full Digital Ebook', icon: BookOpen, desc: 'Comprehensive deep-dive curriculum' },
-    { id: 'Printable Checklist', label: 'Printable Checklist & Routine', icon: CheckSquare, desc: 'Quick-reference action sheet' },
-    { id: 'Interactive Notion Hub', label: 'Notion Digital Hub', icon: Layers, desc: 'Interactive workspace template' },
-  ];
+  const toggleAddOn = (token: ProductFormat) => {
+    if (token === productFormat) return; // primary can't be an add-on
+    setAddOnFormats((prev) =>
+      prev.includes(token) ? prev.filter((t) => t !== token) : [...prev, token]
+    );
+  };
 
   const handleGenerate = async () => {
     setIsGenerating(true);
+    setPdfError(null);
     try {
+      const includedFormats = Array.from(new Set<ProductFormat>([productFormat, ...addOnFormats]));
       const res = await fetch('/api/synthesize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -257,6 +411,7 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
           niche,
           viralProblem,
           productFormat,
+          includedFormats,
           pricePoint,
         }),
       });
@@ -264,7 +419,8 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
       const data = await res.json();
       const normalized = normalizeBlueprint(data, { creatorName, creatorHandle, productFormat, pricePoint });
       setBlueprint(normalized);
-      notifyUpdate({ blueprint: normalized });
+      setActivePillarIndex(0);
+      notifyUpdate({ blueprint: normalized, activePillarIndex: 0 });
     } catch (err) {
       console.error('Failed to generate product blueprint:', err);
     } finally {
@@ -288,56 +444,41 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
     setTimeout(() => setCopiedText(false), 2000);
   };
 
-  const handleDownloadPdf = () => {
+  const handleDownloadPdf = async () => {
     if (!blueprint) return;
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    const pillarsList = blueprint.pillars || [];
-    const checklistList = blueprint.printableChecklist || [];
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${blueprint.productTitle}</title>
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; max-width: 800px; margin: 40px auto; padding: 0 20px; color: #1e293b; }
-            h1 { font-size: 28px; margin-bottom: 4px; color: #0f172a; }
-            .subtitle { font-size: 16px; color: #475569; margin-bottom: 24px; }
-            .author { font-size: 14px; font-weight: bold; color: #4338ca; margin-bottom: 32px; padding-bottom: 16px; border-bottom: 1px solid #e2e8f0; }
-            .pillar { margin-bottom: 32px; page-break-inside: avoid; }
-            .pillar h2 { font-size: 20px; color: #1e293b; border-bottom: 2px solid #e0e7ff; padding-bottom: 6px; }
-            .checklist { background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; margin-top: 32px; }
-            .checklist li { margin-bottom: 8px; list-style-type: none; }
-          </style>
-        </head>
-        <body>
-          <h1>${blueprint.productTitle}</h1>
-          <div class="subtitle">${blueprint.subtitle}</div>
-          <div class="author">Created in collaboration with ${blueprint.creatorAttribution}</div>
-          
-          ${pillarsList.map(p => `
-            <div class="pillar">
-              <h2>Pillar ${p.pillarNumber}: ${p.title}</h2>
-              <p><strong>Key Action Item:</strong> ${p.keyActionItem}</p>
-              <p>${p.fullContentMarkdown.replace(/\n/g, '<br/>')}</p>
-            </div>
-          `).join('')}
-
-          <div class="checklist">
-            <h2>Daily Implementation Checklist</h2>
-            <ul>
-              ${checklistList.map(item => `<li>[ ] ${item}</li>`).join('')}
-            </ul>
-          </div>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => {
-      printWindow.print();
-    }, 400);
+    setIsDownloadingPdf(true);
+    setPdfError(null);
+    try {
+      const res = await fetch('/api/generate-product-pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          blueprint,
+          creatorName,
+          creatorHandle,
+          accentColor: blueprint.coverDesign?.accentColor,
+        }),
+      });
+      if (!res.ok) throw new Error(`PDF request failed with status ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const safeTitle = (blueprint.productTitle || 'product-blueprint')
+        .replace(/[^a-z0-9]+/gi, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase();
+      a.download = `${safeTitle || 'product-blueprint'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to download product PDF:', err);
+      setPdfError('PDF generation failed. Please try again.');
+    } finally {
+      setIsDownloadingPdf(false);
+    }
   };
 
   return (
@@ -426,31 +567,61 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
 
             <div>
               <label className="block text-[11px] font-semibold text-slate-400 mb-2">
-                Digital Product Format
+                Primary Product Format
               </label>
-              <div className="space-y-1.5">
-                {formats.map((f) => {
+              <div className="flex flex-wrap gap-1.5">
+                {FORMAT_OPTIONS.map((f) => {
                   const Icon = f.icon;
-                  const isSelected = productFormat === f.id;
+                  const isSelected = productFormat === f.token;
                   return (
                     <button
-                      key={f.id}
+                      key={f.token}
                       type="button"
-                      onClick={() => setProductFormat(f.id)}
-                      className={`w-full p-2.5 rounded-xl border text-left flex items-center justify-between transition-all cursor-pointer ${
+                      title={f.desc}
+                      onClick={() => {
+                        setProductFormat(f.token);
+                        setAddOnFormats((prev) => prev.filter((t) => t !== f.token));
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-indigo-950/60 border-indigo-600 text-white shadow-sm'
+                          ? 'bg-indigo-950/70 border-indigo-600 text-white shadow-sm'
                           : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:text-white hover:border-slate-700'
                       }`}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <Icon className={`w-4 h-4 ${isSelected ? 'text-indigo-400' : 'text-slate-500'}`} />
-                        <div>
-                          <div className="text-xs font-semibold">{f.label}</div>
-                          <div className="text-[10px] text-slate-500">{f.desc}</div>
-                        </div>
-                      </div>
-                      {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-indigo-400" />}
+                      <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-indigo-400' : 'text-slate-500'}`} />
+                      <span>{f.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-slate-500 mt-1.5 leading-snug">
+                {FORMAT_OPTIONS.find((f) => f.token === productFormat)?.desc}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-slate-400 mb-2">
+                Bundle Add-On Formats <span className="text-slate-600 font-normal">(optional)</span>
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {FORMAT_OPTIONS.filter((f) => f.token !== productFormat).map((f) => {
+                  const Icon = f.icon;
+                  const isOn = addOnFormats.includes(f.token);
+                  return (
+                    <button
+                      key={f.token}
+                      type="button"
+                      title={f.desc}
+                      onClick={() => toggleAddOn(f.token)}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold transition-all cursor-pointer ${
+                        isOn
+                          ? 'bg-teal-950/60 border-teal-600 text-teal-100 shadow-sm'
+                          : 'bg-slate-950/60 border-slate-800/80 text-slate-400 hover:text-white hover:border-slate-700'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 ${isOn ? 'text-teal-400' : 'text-slate-500'}`} />
+                      <span>{f.label}</span>
+                      {isOn && <Check className="w-3 h-3 text-teal-400" />}
                     </button>
                   );
                 })}
@@ -490,7 +661,7 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
               {isGenerating ? (
                 <>
                   <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>Synthesizing Product with AI...</span>
+                  <span>{PROGRESS_MESSAGES[progressStep]}</span>
                 </>
               ) : (
                 <>
@@ -511,7 +682,7 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
                 <div>
                   <div className="flex items-center gap-2 mb-1.5">
                     <span className="px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 text-[10px] font-semibold">
-                      {blueprint.formatType || productFormat}
+                      {blueprint.formatType || FORMAT_TOKEN_LABELS[productFormat]}
                     </span>
                     <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[10px] font-mono font-bold">
                       Suggested Price: ${blueprint.pricePoint || pricePoint}
@@ -543,11 +714,16 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
 
                   <button
                     onClick={handleDownloadPdf}
-                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer text-xs flex items-center gap-1.5"
+                    disabled={isDownloadingPdf}
+                    className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer text-xs flex items-center gap-1.5 disabled:opacity-50"
                     title="Download Formatted PDF"
                   >
-                    <Download className="w-4 h-4 text-indigo-400" />
-                    <span>PDF</span>
+                    {isDownloadingPdf ? (
+                      <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4 text-indigo-400" />
+                    )}
+                    <span>{isDownloadingPdf ? 'Building PDF…' : 'PDF'}</span>
                   </button>
 
                   <button
@@ -559,6 +735,61 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
                   </button>
                 </div>
               </div>
+
+              {pdfError && (
+                <div className="p-2.5 rounded-xl bg-red-950/40 border border-red-800/60 text-[11px] text-red-300">
+                  {pdfError}
+                </div>
+              )}
+
+              {/* Included Formats Summary */}
+              {(() => {
+                const included = Array.from(new Set<ProductFormat>([productFormat, ...addOnFormats]));
+                return (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500">Included:</span>
+                    {included.map((t) => (
+                      <span key={t} className="px-2 py-0.5 rounded bg-slate-800/80 text-slate-300 border border-slate-700 text-[10px] font-semibold">
+                        {FORMAT_TOKEN_LABELS[t]}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* Cover Design Preview */}
+              {blueprint.coverDesign && (
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
+                  <div className="flex items-center gap-1.5">
+                    <Palette className="w-3.5 h-3.5 text-fuchsia-400" />
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-fuchsia-400">Cover Design Concept</span>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <div
+                      className="w-14 h-14 rounded-lg border border-slate-700 shrink-0"
+                      style={{ backgroundColor: blueprint.coverDesign.accentColor || '#6366f1' }}
+                      title={blueprint.coverDesign.accentColor}
+                    />
+                    <div className="space-y-0.5">
+                      {blueprint.coverDesign.headline && (
+                        <div className="text-sm font-bold text-white leading-snug">{blueprint.coverDesign.headline}</div>
+                      )}
+                      {blueprint.coverDesign.subheadline && (
+                        <div className="text-xs text-slate-300">{blueprint.coverDesign.subheadline}</div>
+                      )}
+                      {Array.isArray(blueprint.coverDesign.styleKeywords) && blueprint.coverDesign.styleKeywords.length > 0 && (
+                        <div className="flex flex-wrap gap-1 pt-1">
+                          {blueprint.coverDesign.styleKeywords.map((kw, i) => (
+                            <span key={i} className="px-1.5 py-0.5 rounded bg-slate-800/70 text-slate-400 border border-slate-700/70 text-[9px]">
+                              {kw}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Marketing Hook Banner */}
               <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-1">
@@ -640,6 +871,31 @@ export const ProductStudioView: React.FC<ProductStudioViewProps> = ({
                   ))}
                 </div>
               </div>
+
+              {/* Expert Sources / Resource Directory */}
+              {Array.isArray(blueprint.expertSources) && blueprint.expertSources.length > 0 && (
+                <div className="p-4 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <GraduationCap className="w-4 h-4 text-sky-400" />
+                    <h4 className="text-xs font-bold text-white">Expert Sources &amp; Resource Directory</h4>
+                  </div>
+                  <div className="space-y-1.5">
+                    {(blueprint.expertSources || []).map((src, idx) => (
+                      <div key={idx} className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/60 text-xs">
+                        <div className="font-semibold text-slate-200">
+                          {src.domain}
+                          {Array.isArray(src.credentialTypes) && src.credentialTypes.length > 0 && (
+                            <span className="text-slate-500 font-normal"> — {src.credentialTypes.join(', ')}</span>
+                          )}
+                        </div>
+                        {src.keyInsightSynthesized && (
+                          <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">{src.keyInsightSynthesized}</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Order Bump & Next Step */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-gradient-to-r from-emerald-950/30 via-slate-950 to-indigo-950/30 border border-emerald-800/40">

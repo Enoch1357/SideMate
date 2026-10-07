@@ -5,6 +5,9 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { generateProductBlueprint, normalizeFormat } from './server/llm.ts';
+import { generateBlueprintPdf } from './server/pdfGenerator.ts';
+import type { EnhancedProductBlueprint } from './src/types/index.ts';
 
 dotenv.config();
 
@@ -387,7 +390,95 @@ Take a peek at the preview link and let me know if you want me to activate the l
     };
   }
 
-  // 1. AI Product Synthesis Endpoint (Gemini 3.8 Flash with Multi-Model Failover & Resilient Fallback)
+  // ---------------------------------------------------------------------------
+  // Adapter: merge an EnhancedProductBlueprint with legacy-compatible fields so
+  // the existing frontend (normalizeBlueprint) and downstream Whop views keep
+  // working, while new fields (coverDesign, expertSources, pillars w/ resources)
+  // flow through untouched.
+  // ---------------------------------------------------------------------------
+  function toLegacyChecklist(bp: EnhancedProductBlueprint): string[] {
+    const cl = bp.printableChecklist;
+    if (!cl || !Array.isArray(cl.sections)) {
+      return [
+        'Complete the root-cause diagnostic',
+        'Execute the core daily protocol',
+        'Apply the daytime levers consistently',
+        'Run the troubleshooting reset when needed',
+      ];
+    }
+    const flat: string[] = [];
+    cl.sections.forEach((s) => (s.items || []).forEach((it) => flat.push(it.text)));
+    return flat.length ? flat : ['Follow the daily checklist'];
+  }
+
+  function buildWhopConfigFor(bp: EnhancedProductBlueprint, creatorHandle: string, pricePoint: number) {
+    const cleanHandle = (creatorHandle || 'creator').replace('@', '');
+    const whopSlug = `whop-${cleanHandle.toLowerCase()}-${Date.now().toString().slice(-4)}`;
+    return {
+      whopProductId: `prod_${Math.random().toString(36).substring(2, 10)}`,
+      companyId: process.env.WHOP_COMPANY_ID || 'biz_operator_3ds',
+      title: bp.productTitle,
+      tagline: bp.productSubtitle,
+      price: pricePoint,
+      orderBumpPrice: bp.orderBump?.price ?? 17,
+      orderBumpTitle: bp.orderBump?.title ?? 'Audio Walkthrough & Notion Dashboard',
+      operatorSplitPct: 50,
+      creatorAffiliateSplitPct: 50,
+      creatorWhopHandle: cleanHandle,
+      whopCheckoutUrl: `https://whop.com/checkout/${whopSlug}?a=${cleanHandle}`,
+      whopPreviewSlug: whopSlug,
+      deliveryFormat: 'Whop Digital Pass' as const,
+      whopPerks: [
+        'Instant Whop Hub Access',
+        'Full PDF Protocol (Mobile-Optimized)',
+        'Interactive Daily Notion Habit Tracker',
+        'Printable 1-Page Checklist',
+        'Direct Access to Monthly Creator Q&A Updates',
+      ],
+      isLiveSynced: !!process.env.WHOP_API_KEY,
+    };
+  }
+
+  function adaptBlueprintResponse(
+    bp: EnhancedProductBlueprint,
+    creatorHandle: string,
+    creatorName: string,
+    productFormat: string,
+    pricePoint: number
+  ) {
+    const whopConfig = buildWhopConfigFor(bp, creatorHandle, pricePoint);
+    const legacyChecklist = toLegacyChecklist(bp);
+    const pillars = Array.isArray(bp.pillars) ? bp.pillars : [];
+
+    return {
+      // Full enhanced blueprint (new schema) — the source of truth for PDF + rich UI
+      ...bp,
+
+      // ---- Legacy-compatible aliases (consumed by normalizeBlueprint + Whop views) ----
+      subtitle: bp.productSubtitle,
+      productType: productFormat,
+      formatType: productFormat,
+      creatorAttribution: creatorName,
+      pricePoint,
+      suggestedPricePoint: pricePoint,
+      orderBumpTitle: bp.orderBump?.title ?? 'Audio Walkthrough & Notion Dashboard',
+      orderBumpPrice: bp.orderBump?.price ?? 17,
+      valueProposition: bp.coreProblemSolved,
+      // pillars already present via ...bp; ensure array & legacy checklist as string[]
+      pillars,
+      curatedModules: pillars,
+      printableChecklistItems: legacyChecklist, // flat string[] for legacy checklist rendering
+      faqItems: [],
+      marketingHook: bp.tagline,
+      personalizedOutreachPitch:
+        `Hey ${creatorName.split(' ')[0] || 'there'}, I built "${bp.productTitle}" for your audience — ` +
+        `${bp.productSubtitle}. It's ready to sell on Whop with an automatic 50/50 split. Want the preview link?`,
+      whopConfig,
+      engineUsed: bp.engineUsed,
+    };
+  }
+
+  // 1. AI Product Synthesis Endpoint (OpenRouter · Claude Sonnet 4.5 with rich fallback)
   app.post('/api/synthesize', async (req: Request, res: Response) => {
     const {
       creatorHandle = '@creator',
@@ -395,169 +486,159 @@ Take a peek at the preview link and let me know if you want me to activate the l
       niche = 'Health & Productivity',
       viralProblem = 'Chronic morning fatigue & afternoon crashes',
       audienceTone = 'Authoritative yet empathetic and action-oriented',
+      audienceSize = 'Micro-creator (10k-100k engaged followers)',
       pricePoint = 27,
-      productFormat = 'E-Book Protocol & Whop Digital Hub',
+      productFormat = 'pdf_guide',
+      includedFormats = [],
     } = req.body;
 
-    const cleanHandle = (creatorHandle || 'creator').replace('@', '');
-    const whopSlug = `whop-${cleanHandle.toLowerCase()}-${Date.now().toString().slice(-4)}`;
+    try {
+      const blueprint = await generateProductBlueprint({
+        creatorName,
+        creatorHandle,
+        niche,
+        viralProblem,
+        audienceTone,
+        audienceSize,
+        pricePoint,
+        productFormat,
+        includedFormats,
+      });
 
-    // If GEMINI_API_KEY is available, try generative models with multi-model failover
-    if (process.env.GEMINI_API_KEY) {
-      try {
-        const prompt = `You are an elite digital product strategist and copywriter specializing in high-converting, actionable digital protocols for microcreators ($14-$47 price points on Whop).
-        
-Analyze this creator and audience:
-- Creator Name: ${creatorName} (${creatorHandle})
-- Niche: ${niche}
-- Acute Viral Problem (from comment complaints): "${viralProblem}"
-- Creator Voice / Audience Tone: ${audienceTone}
-- Selected Product Format: ${productFormat}
-- Base Price Point: $${pricePoint}
-
-Generate a complete, high-converting digital product blueprint in strictly valid JSON format matching this schema:
-{
-  "productTitle": "Catchy 3-5 word authoritative title (e.g., The 14-Day Reset Protocol)",
-  "subtitle": "Clear 1-sentence value promise solving the viral problem",
-  "productType": "${productFormat}",
-  "targetAudience": "Specific description of the creator's followers needing this",
-  "viralProblemSolved": "${viralProblem}",
-  "suggestedPricePoint": ${pricePoint},
-  "orderBumpTitle": "Specific $17 high-margin impulse add-on (e.g. 5-Minute Daily Video Walkthrough or Notion Habit Tracker)",
-  "orderBumpPrice": 17,
-  "valueProposition": "3-sentence breakdown of why this eliminates noise and delivers rapid results",
-  "curatedModules": [
-    {
-      "moduleNumber": 1,
-      "title": "Module 1: Diagnosis & Root Cause Analysis",
-      "deliverables": ["3-5 bullet points of deliverables"],
-      "summary": "2-3 sentence overview explaining why past solutions failed",
-      "fullContentMarkdown": "A rich 300-word tactical guide excerpt providing immediate value"
-    },
-    {
-      "moduleNumber": 2,
-      "title": "Module 2: The Core Step-by-Step Daily Protocol",
-      "deliverables": ["3-5 bullet points of deliverables"],
-      "summary": "Detailed daily routine and actionable execution steps",
-      "fullContentMarkdown": "A rich 300-word step-by-step phased protocol"
-    },
-    {
-      "moduleNumber": 3,
-      "title": "Module 3: 1-Page Printable Action Checklist",
-      "deliverables": ["3-5 bullet points of deliverables"],
-      "summary": "High-utility single sheet checklist for frictionless daily compliance",
-      "fullContentMarkdown": "Action checklist breakdown and morning/evening checklist structure"
-    },
-    {
-      "moduleNumber": 4,
-      "title": "Module 4: Emergency FAQs & Edge Cases",
-      "deliverables": ["3-5 bullet points of deliverables"],
-      "summary": "Answers to the top 15 most frequent audience objections from comments",
-      "fullContentMarkdown": "Detailed Q&A resolving specific edge cases and objections"
+      const response = adaptBlueprintResponse(
+        blueprint,
+        creatorHandle,
+        creatorName,
+        productFormat,
+        pricePoint
+      );
+      return res.json(response);
+    } catch (err: any) {
+      console.error('[synthesize] generation failed:', err?.message || err);
+      // Absolute last-resort deterministic fallback preserves previous behavior.
+      const fallback = buildTailoredBlueprint({
+        creatorHandle,
+        creatorName,
+        niche,
+        viralProblem,
+        audienceTone,
+        pricePoint,
+        productFormat: typeof productFormat === 'string' ? productFormat : 'Actionable PDF Guide',
+        engineUsed: 'Deterministic Fallback Engine',
+      });
+      return res.json(fallback);
     }
-  ],
-  "printableChecklist": [
-    "Step 1: Specific action item",
-    "Step 2: Specific action item",
-    "Step 3: Specific action item",
-    "Step 4: Specific action item",
-    "Step 5: Specific action item"
-  ],
-  "faqItems": [
-    {"question": "Top audience objection 1?", "answer": "Practical empathetic answer"},
-    {"question": "Top audience objection 2?", "answer": "Practical empathetic answer"},
-    {"question": "Top audience objection 3?", "answer": "Practical empathetic answer"}
-  ],
-  "marketingHook": "High-impact 2-sentence hook for the creator to use on Instagram Story or TikTok bio",
-  "personalizedOutreachPitch": "A 3-sentence DM/Email script directly addressing the creator, highlighting that you already built the product and layout for them, providing their preview link, and offering 50/50 revenue split with zero effort required."
-}`;
-
-        const { text, modelUsed } = await generateWithGemini(
-          prompt,
-          'You generate structured JSON for creator digital products on Whop with 50/50 automated splits.'
-        );
-
-        const parsed = JSON.parse(text);
-
-        // Enhance with Whop configuration
-        const whopConfig = {
-          whopProductId: `prod_${Math.random().toString(36).substring(2, 10)}`,
-          companyId: process.env.WHOP_COMPANY_ID || 'biz_operator_3ds',
-          title: parsed.productTitle || `${niche} Mastery Protocol`,
-          tagline: parsed.subtitle || `Official actionable guide by ${creatorName}`,
-          price: pricePoint,
-          orderBumpPrice: parsed.orderBumpPrice || 17,
-          orderBumpTitle: parsed.orderBumpTitle || 'Fast-Action Checklist & Video Walkthrough',
-          operatorSplitPct: 50,
-          creatorAffiliateSplitPct: 50,
-          creatorWhopHandle: cleanHandle,
-          whopCheckoutUrl: `https://whop.com/checkout/${whopSlug}?a=${cleanHandle}`,
-          whopPreviewSlug: whopSlug,
-          deliveryFormat: 'Whop Digital Pass' as const,
-          whopPerks: [
-            'Instant Whop Hub Access',
-            'Full PDF Protocol (24 Pages, Mobile-Optimized)',
-            'Interactive Daily Notion Habit Tracker',
-            'Printable 1-Page Refrigerator Checklist',
-            'Direct Access to Monthly Creator Q&A Updates',
-          ],
-          isLiveSynced: !!process.env.WHOP_API_KEY,
-        };
-
-        const modules = Array.isArray(parsed.curatedModules) ? parsed.curatedModules : [];
-        const pillars = Array.isArray(parsed.pillars) && parsed.pillars.length > 0
-          ? parsed.pillars
-          : modules.map((m: any, idx: number) => ({
-              pillarNumber: m.pillarNumber || m.moduleNumber || idx + 1,
-              title: m.title || `Pillar 0${idx + 1}`,
-              objective: m.objective || m.summary || 'Immediate core transformation',
-              keyActionItem: m.keyActionItem || (m.deliverables && m.deliverables[0]) || 'Execute protocol step',
-              fullContentMarkdown: m.fullContentMarkdown || m.summary || '',
-            }));
-
-        return res.json({
-          ...parsed,
-          pillars,
-          curatedModules: modules,
-          pricePoint: parsed.pricePoint ?? parsed.suggestedPricePoint ?? pricePoint,
-          suggestedPricePoint: parsed.suggestedPricePoint ?? parsed.pricePoint ?? pricePoint,
-          formatType: parsed.formatType || parsed.productType || productFormat,
-          productType: parsed.productType || parsed.formatType || productFormat,
-          creatorAttribution: parsed.creatorAttribution || creatorName,
-          printableChecklist: Array.isArray(parsed.printableChecklist) ? parsed.printableChecklist : [],
-          faqItems: Array.isArray(parsed.faqItems) ? parsed.faqItems : [],
-          whopConfig,
-          engineUsed: modelUsed,
-        });
-      } catch (_geminiErr: any) {
-        // Graceful failover to dynamic bespoke blueprint engine
-        const fallback = buildTailoredBlueprint({
-          creatorHandle,
-          creatorName,
-          niche,
-          viralProblem,
-          audienceTone,
-          pricePoint,
-          productFormat,
-          engineUsed: 'Dynamic Bespoke Engine',
-        });
-        return res.json(fallback);
-      }
-    }
-
-    // Default synthesis if GEMINI_API_KEY is not configured
-    const fallback = buildTailoredBlueprint({
-      creatorHandle,
-      creatorName,
-      niche,
-      viralProblem,
-      audienceTone,
-      pricePoint,
-      productFormat,
-      engineUsed: 'Autonomous Synthesis Engine',
-    });
-    return res.json(fallback);
   });
+
+  // 1b. Server-side PDF generation for the generated blueprint (Puppeteer)
+  app.post('/api/generate-product-pdf', async (req: Request, res: Response) => {
+    try {
+      const { blueprint, creatorName } = req.body || {};
+      if (!blueprint || typeof blueprint !== 'object') {
+        return res.status(400).json({ error: 'Missing or invalid blueprint payload' });
+      }
+
+      // Coerce a legacy/normalized blueprint into the enhanced shape if needed.
+      const bp: EnhancedProductBlueprint = coerceEnhancedBlueprint(blueprint);
+
+      const pdfBuffer = await generateBlueprintPdf(bp, {
+        creatorName: creatorName || bp.creatorAttribution,
+      });
+
+      const safeName = (bp.productTitle || 'digital-product')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '')
+        .slice(0, 60);
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeName || 'digital-product'}.pdf"`);
+      res.setHeader('Content-Length', String(pdfBuffer.length));
+      return res.end(pdfBuffer);
+    } catch (err: any) {
+      console.error('[generate-product-pdf] failed:', err?.message || err);
+      return res.status(500).json({ error: 'PDF generation failed', details: err?.message });
+    }
+  });
+
+  // Defensive coercion: accept either an EnhancedProductBlueprint or a normalized
+  // legacy blueprint from the frontend and return a valid enhanced shape.
+  function coerceEnhancedBlueprint(raw: any): EnhancedProductBlueprint {
+    const pillars = Array.isArray(raw.pillars) && raw.pillars.length > 0
+      ? raw.pillars.map((p: any, idx: number) => ({
+          pillarNumber: p.pillarNumber || idx + 1,
+          title: p.title || `Pillar ${idx + 1}`,
+          objective: p.objective || '',
+          keyActionItem: p.keyActionItem || '',
+          fullContentMarkdown: p.fullContentMarkdown || p.summary || '',
+          illustrationPrompt: p.illustrationPrompt,
+          resources: Array.isArray(p.resources) ? p.resources : undefined,
+        }))
+      : (Array.isArray(raw.curatedModules) ? raw.curatedModules : []).map((m: any, idx: number) => ({
+          pillarNumber: m.pillarNumber || m.moduleNumber || idx + 1,
+          title: m.title || `Pillar ${idx + 1}`,
+          objective: m.objective || m.summary || '',
+          keyActionItem: m.keyActionItem || (Array.isArray(m.deliverables) && m.deliverables[0]) || '',
+          fullContentMarkdown: m.fullContentMarkdown || m.summary || '',
+        }));
+
+    // Normalize a printable checklist that may already be enhanced, or a flat string[].
+    let printableChecklist = raw.printableChecklist;
+    const flat: string[] | undefined = Array.isArray(raw.printableChecklistItems)
+      ? raw.printableChecklistItems
+      : (Array.isArray(raw.printableChecklist) ? raw.printableChecklist : undefined);
+    if (!printableChecklist || Array.isArray(printableChecklist)) {
+      printableChecklist = flat && flat.length
+        ? {
+            title: `${raw.productTitle || 'Product'} Checklist`,
+            subtitle: 'Print it and check the boxes.',
+            sections: [
+              {
+                sectionTitle: 'Action Items',
+                items: flat.map((t) => ({ text: String(t), isRequired: true })),
+              },
+            ],
+          }
+        : undefined;
+    }
+
+    return {
+      productTitle: raw.productTitle || 'Digital Product',
+      productSubtitle: raw.productSubtitle || raw.subtitle || '',
+      tagline: raw.tagline || raw.marketingHook || '',
+      targetAudience: raw.targetAudience || '',
+      coreProblemSolved: raw.coreProblemSolved || raw.viralProblemSolved || raw.valueProposition || '',
+      primaryFormat: normalizeFormat(raw.primaryFormat || raw.formatType || raw.productType),
+      includedFormats: Array.isArray(raw.includedFormats) && raw.includedFormats.length
+        ? raw.includedFormats
+        : [normalizeFormat(raw.primaryFormat || raw.formatType || raw.productType)],
+      price: Number(raw.price ?? raw.pricePoint ?? raw.suggestedPricePoint ?? 27),
+      coverDesign: raw.coverDesign || {
+        headline: raw.productTitle || 'Digital Product',
+        subheadline: raw.productSubtitle || raw.subtitle || '',
+        accentColor: '#4F46E5',
+        styleKeywords: ['clean', 'professional'],
+        coverImagePrompt: '',
+      },
+      pillars,
+      printableChecklist,
+      notionTemplate: raw.notionTemplate,
+      audioWalkthrough: raw.audioWalkthrough,
+      orderBump: raw.orderBump || (raw.orderBumpTitle
+        ? {
+            title: raw.orderBumpTitle,
+            description: '',
+            price: Number(raw.orderBumpPrice ?? 17),
+            format: 'audio_walkthrough',
+            valueProposition: '',
+          }
+        : undefined),
+      expertSources: Array.isArray(raw.expertSources) ? raw.expertSources : [],
+      creatorAttribution: raw.creatorAttribution || raw.creatorName,
+      engineUsed: raw.engineUsed,
+      curatedModules: pillars,
+    };
+  }
 
   // 2. Whop Product Creation & Sync Endpoint
   app.post('/api/whop/create-product', async (req: Request, res: Response) => {
